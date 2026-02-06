@@ -84,7 +84,7 @@ client.on('messageCreate', async message => {
             const offset = message.mentions.users.first() ? 1 : 0;
             
             if (args.length < 5 + offset) {
-                await message.reply('Usage: `$set <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set Gandalf 100 50 100 20 15`');
+                await message.channel.send('Usage: `$set <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set Gandalf 100 50 100 20 15`');
                 await del();
                 return;
             }
@@ -92,7 +92,7 @@ client.on('messageCreate', async message => {
             const [name, hp, mp, ip, armor, barrier] = [args[offset], parseInt(args[offset+1]), parseInt(args[offset+2]), parseInt(args[offset+3]), parseInt(args[offset+4]), parseInt(args[offset+5])];
             
             if (isNaN(hp) || isNaN(mp) || isNaN(ip) || isNaN(armor) || isNaN(barrier)) {
-                await message.reply('❌ All stats must be numbers!');
+                await message.channel.send('❌ All stats must be numbers!');
                 await del();
                 return;
             }
@@ -117,7 +117,7 @@ client.on('messageCreate', async message => {
                 )
                 .setFooter({ text: 'HP/MP/IP full • Armor/Barrier 0' });
             
-            await message.reply({ embeds: [embed] });
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
@@ -140,7 +140,7 @@ client.on('messageCreate', async message => {
                     { name: `${EMOJIS.Barrier} Barrier`, value: `${d.Barrier}/${d.maxBarrier}`, inline: true }
                 );
             
-            await message.reply({ embeds: [embed] });
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
@@ -148,7 +148,7 @@ client.on('messageCreate', async message => {
         // $a <d1> <d2> <mod> <gate>
         if (cmd === 'a' || cmd === 'attack') {
             if (args.length < 4) {
-                await message.reply('Usage: `$a <d1> <d2> <mod> <gate>`');
+                await message.channel.send('Usage: `$a <d1> <d2> <mod> <gate>`');
                 await del();
                 return;
             }
@@ -180,7 +180,7 @@ client.on('messageCreate', async message => {
             else if (hit) embed.setDescription('✅ **HIT!**');
             else embed.setDescription('❌ **MISS**');
             
-            await message.reply({ embeds: [embed] });
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
@@ -188,7 +188,7 @@ client.on('messageCreate', async message => {
         // $c <d1> <d2> <mod> <gate> [mp]
         if (cmd === 'c' || cmd === 'cast') {
             if (args.length < 4) {
-                await message.reply('Usage: `$c <d1> <d2> <mod> <gate> [mp]`');
+                await message.channel.send('Usage: `$c <d1> <d2> <mod> <gate> [mp]`');
                 await del();
                 return;
             }
@@ -199,7 +199,7 @@ client.on('messageCreate', async message => {
             const data = playerData.get(userId);
             
             if (data.MP < mpCost) {
-                await message.reply(`❌ Not enough MP! Need ${mpCost}, have ${data.MP}`);
+                await message.channel.send(`❌ Not enough MP! Need ${mpCost}, have ${data.MP}`);
                 await del();
                 return;
             }
@@ -229,14 +229,14 @@ client.on('messageCreate', async message => {
             else if (hit) embed.setDescription('✅ **HIT!**');
             else embed.setDescription('❌ **MISS**');
             
-            await message.reply({ embeds: [embed] });
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
         
         // $hp <amount|full|zero>
         if (cmd === 'hp') {
-            if (!args[0]) { await message.reply('Usage: `$hp <amount|full|zero>`'); await del(); return; }
+            if (!args[0]) { await message.channel.send('Usage: `$hp <amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
             initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
@@ -251,14 +251,14 @@ client.on('messageCreate', async message => {
                 .setTitle(d.characterName)
                 .addFields({ name: `${EMOJIS.HP} HP`, value: `${old} → **${d.HP}**/${d.maxHP}`, inline: true });
             
-            await message.reply({ embeds: [embed] });
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
         
         // $mp
         if (cmd === 'mp') {
-            if (!args[0]) { await message.reply('Usage: `$mp <amount|full|zero>`'); await del(); return; }
+            if (!args[0]) { await message.channel.send('Usage: `$mp <amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
             initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
@@ -273,14 +273,14 @@ client.on('messageCreate', async message => {
                 .setTitle(d.characterName)
                 .addFields({ name: `${EMOJIS.MP} MP`, value: `${old} → **${d.MP}**/${d.maxMP}`, inline: true });
             
-            await message.reply({ embeds: [embed] });
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
         
         // $armor
         if (cmd === 'armor') {
-            if (!args[0]) { await message.reply('Usage: `$armor <amount|full|zero>`'); await del(); return; }
+            if (!args[0]) { await message.channel.send('Usage: `$armor <amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
             initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
@@ -295,14 +295,14 @@ client.on('messageCreate', async message => {
                 .setTitle(d.characterName)
                 .addFields({ name: `${EMOJIS.Armor} Armor`, value: `${old} → **${d.Armor}**/${d.maxArmor}`, inline: true });
             
-            await message.reply({ embeds: [embed] });
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
         
         // $barrier
         if (cmd === 'barrier') {
-            if (!args[0]) { await message.reply('Usage: `$barrier <amount|full|zero>`'); await del(); return; }
+            if (!args[0]) { await message.channel.send('Usage: `$barrier <amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
             initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
@@ -317,7 +317,7 @@ client.on('messageCreate', async message => {
                 .setTitle(d.characterName)
                 .addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${old} → **${d.Barrier}**/${d.maxBarrier}`, inline: true });
             
-            await message.reply({ embeds: [embed] });
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
@@ -331,7 +331,7 @@ client.on('messageCreate', async message => {
             d.Armor += d.maxArmor;
             d.Barrier += d.maxBarrier;
             
-            await message.reply(`🛡️ **${d.characterName}** defended!\n💥 Armor: ${oldA} +${d.maxArmor} = ${d.Armor}\n🛡️ Barrier: ${oldB} +${d.maxBarrier} = ${d.Barrier}`);
+            await message.channel.send(`🛡️ **${d.characterName}** defended!\n💥 Armor: ${oldA} +${d.maxArmor} = ${d.Armor}\n🛡️ Barrier: ${oldB} +${d.maxBarrier} = ${d.Barrier}`);
             await del();
             return;
         }
@@ -345,7 +345,7 @@ client.on('messageCreate', async message => {
             d.Armor = 0;
             d.Barrier = 0;
             
-            await message.reply(`💨 **${d.characterName}** turn reset!\n💥 Armor: 0\n🛡️ Barrier: 0`);
+            await message.channel.send(`💨 **${d.characterName}** turn reset!\n💥 Armor: 0\n🛡️ Barrier: 0`);
             await del();
             return;
         }
@@ -358,7 +358,7 @@ client.on('messageCreate', async message => {
             d.HP = d.maxHP;
             d.MP = d.maxMP;
             
-            await message.reply(`✨ **${d.characterName}** rested!\n❤️ HP: ${d.HP}/${d.maxHP}\n💧 MP: ${d.MP}/${d.maxMP}`);
+            await message.channel.send(`✨ **${d.characterName}** rested!\n❤️ HP: ${d.HP}/${d.maxHP}\n💧 MP: ${d.MP}/${d.maxMP}`);
             await del();
             return;
         }
@@ -366,7 +366,7 @@ client.on('messageCreate', async message => {
         // $gmattack <d1> <d2> <mod> <gate> <@targets> [armor|barrier|true]
         if (cmd === 'gmattack') {
             if (args.length < 5) {
-                await message.reply('Usage: `$gmattack <d1> <d2> <mod> <gate> <@targets> [armor|barrier|true]`');
+                await message.channel.send('Usage: `$gmattack <d1> <d2> <mod> <gate> <@targets> [armor|barrier|true]`');
                 await del();
                 return;
             }
@@ -384,7 +384,7 @@ client.on('messageCreate', async message => {
             const targetIds = targets.map(m => m.match(/\d+/)[0]);
             
             if (targetIds.length === 0) {
-                await message.reply('❌ No targets found. Mention with @player');
+                await message.channel.send('❌ No targets found. Mention with @player');
                 await del();
                 return;
             }
@@ -408,7 +408,7 @@ client.on('messageCreate', async message => {
                     )
                     .setDescription(fumble ? '💀 **FUMBLE!**' : '❌ **MISS**');
                 
-                await message.reply({ embeds: [embed] });
+                await message.channel.send({ embeds: [embed] });
                 await del();
                 return;
             }
@@ -435,7 +435,7 @@ client.on('messageCreate', async message => {
                     .setStyle(ButtonStyle.Danger)
             );
             
-            await message.reply({ content: `${targets.join(' ')} ⚔️ INCOMING!`, embeds: [embed], components: [row] });
+            await message.channel.send({ content: `${targets.join(' ')} ⚔️ INCOMING!`, embeds: [embed], components: [row] });
             await del();
             return;
         }
@@ -448,7 +448,7 @@ client.on('messageCreate', async message => {
                 activeEncounter.active = true;
                 activeEncounter.combatants = [];
                 activeEncounter.turnsTaken.clear();
-                await message.reply('⚔️ Clash started!');
+                await message.channel.send('⚔️ Clash started!');
                 await del();
                 return;
             }
@@ -457,16 +457,16 @@ client.on('messageCreate', async message => {
                 activeEncounter.active = false;
                 activeEncounter.combatants = [];
                 activeEncounter.turnsTaken.clear();
-                await message.reply('✅ Clash ended!');
+                await message.channel.send('✅ Clash ended!');
                 await del();
                 return;
             }
             
             if (sub === 'add') {
-                if (!activeEncounter.active) { await message.reply('❌ No clash. Use `$clash start`'); await del(); return; }
+                if (!activeEncounter.active) { await message.channel.send('❌ No clash. Use `$clash start`'); await del(); return; }
                 
                 const mentioned = message.mentions.users;
-                if (mentioned.size === 0) { await message.reply('❌ Mention players: `$clash add @player`'); await del(); return; }
+                if (mentioned.size === 0) { await message.channel.send('❌ Mention players: `$clash add @player`'); await del(); return; }
                 
                 let added = 0;
                 for (const [userId] of mentioned) {
@@ -483,14 +483,14 @@ client.on('messageCreate', async message => {
                     }
                 }
                 
-                await message.reply(`✅ Added ${added} to clash!`);
+                await message.channel.send(`✅ Added ${added} to clash!`);
                 await del();
                 return;
             }
             
             if (sub === 'list') {
-                if (!activeEncounter.active) { await message.reply('❌ No clash.'); await del(); return; }
-                if (activeEncounter.combatants.length === 0) { await message.reply('⚔️ No combatants.'); await del(); return; }
+                if (!activeEncounter.active) { await message.channel.send('❌ No clash.'); await del(); return; }
+                if (activeEncounter.combatants.length === 0) { await message.channel.send('⚔️ No combatants.'); await del(); return; }
                 
                 let list = '**Clash:**\n\n';
                 for (const userId of activeEncounter.combatants) {
@@ -501,12 +501,12 @@ client.on('messageCreate', async message => {
                     }
                 }
                 
-                await message.reply(list);
+                await message.channel.send(list);
                 await del();
                 return;
             }
             
-            await message.reply('Usage: `$clash <start|end|add|list>`');
+            await message.channel.send('Usage: `$clash <start|end|add|list>`');
             await del();
             return;
         }
@@ -523,14 +523,14 @@ client.on('messageCreate', async message => {
                     { name: 'Clash', value: '`$clash start|end|add|list`', inline: false }
                 );
             
-            await message.reply({ embeds: [embed] });
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
         
     } catch (err) {
         console.error('Error:', err);
-        await message.reply('❌ Error occurred.');
+        await message.channel.send('❌ Error occurred.');
     }
 });
 
