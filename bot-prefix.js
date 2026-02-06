@@ -139,6 +139,12 @@ async function saveCharacterSheet(userId, data) {
 // Command help data
 const COMMANDS = {
     // Setup
+    'set': {
+        description: 'Create or update a character',
+        usage: '$set @player <name> <hp> <mp> <ip> <armor> <barrier>',
+        examples: ['$set @Gandalf Gandalf 100 50 100 20 15', '$set @Tank Tank 150 30 80 30 10'],
+        notes: 'Sets all resources to max values. IP is preserved if character already exists.'
+    },
     'view': {
         description: 'View your or another player\'s resources',
         usage: '$view [@player]',
@@ -292,6 +298,11 @@ function sendGuide(message, commandName = null) {
         .setDescription('Use `$guide <command>` for detailed help on a specific command.\n\n**Quick Commands:**')
         .addFields(
             {
+                name: '🎮 Setup',
+                value: '`$set` - Create/update character\n`$view` - View resources',
+                inline: false
+            },
+            {
                 name: '⚔️ Combat (Fast)',
                 value: '`$a` `$attack` `$c` `$cast` - Roll attacks/spells\n`$hp` `$mp` `$armor` `$barrier` - Update resources\n`$defend` `$turn` `$rest` - Quick actions',
                 inline: false
@@ -307,12 +318,12 @@ function sendGuide(message, commandName = null) {
                 inline: false
             },
             {
-                name: '📊 Info',
-                value: '`$view` - View resources\n`$guide <cmd>` - Command help',
+                name: '📊 Help',
+                value: '`$guide <cmd>` - Detailed command help',
                 inline: false
             }
         )
-        .setFooter({ text: 'Example: $guide gmattack for detailed help' });
+        .setFooter({ text: 'Example: $guide set for detailed help' });
     
     message.reply({ embeds: [embed] });
 }
@@ -335,6 +346,77 @@ client.on('messageCreate', async message => {
         // Guide
         if (command === 'guide') {
             sendGuide(message, args[0]);
+            return;
+        }
+        
+        // Set (create/update character)
+        if (command === 'set') {
+            const targetUser = message.mentions.users.first();
+            
+            if (!targetUser) {
+                message.reply('Usage: `$set @player <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set @Gandalf Gandalf 100 50 100 20 15`');
+                return;
+            }
+            
+            if (args.length < 7) {
+                message.reply('Usage: `$set @player <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set @Gandalf Gandalf 100 50 100 20 15`');
+                return;
+            }
+            
+            const targetMember = await message.guild.members.fetch(targetUser.id);
+            const characterName = args[1];
+            const maxHP = parseInt(args[2]);
+            const maxMP = parseInt(args[3]);
+            const maxIP = parseInt(args[4]);
+            const maxArmor = parseInt(args[5]);
+            const maxBarrier = parseInt(args[6]);
+            
+            // Validate numbers
+            if (isNaN(maxHP) || isNaN(maxMP) || isNaN(maxIP) || isNaN(maxArmor) || isNaN(maxBarrier)) {
+                message.reply('❌ All stats must be numbers!\nExample: `$set @Gandalf Gandalf 100 50 100 20 15`');
+                return;
+            }
+            
+            // Create or update character
+            const existingData = playerData.get(targetUser.id);
+            const currentIP = existingData ? existingData.IP : 0;
+            
+            playerData.set(targetUser.id, {
+                username: targetMember.displayName,
+                characterName: characterName,
+                HP: maxHP,
+                MP: maxMP,
+                IP: currentIP, // Preserve current IP
+                Armor: maxArmor,
+                Barrier: maxBarrier,
+                maxHP: maxHP,
+                maxMP: maxMP,
+                maxIP: maxIP,
+                maxArmor: maxArmor,
+                maxBarrier: maxBarrier,
+                statusEffects: []
+            });
+            
+            // Save to database if available
+            if (useDatabase) {
+                await saveCharacterSheet(targetUser.id, playerData.get(targetUser.id));
+            }
+            
+            const embed = new EmbedBuilder()
+                .setColor(0x00FF00)
+                .setTitle(`✨ Character Set: ${characterName}`)
+                .setDescription('Character created/updated successfully!')
+                .addFields(
+                    { name: `${RESOURCE_EMOJIS.HP} HP`, value: `${maxHP}/${maxHP}`, inline: true },
+                    { name: `${RESOURCE_EMOJIS.MP} MP`, value: `${maxMP}/${maxMP}`, inline: true },
+                    { name: `${RESOURCE_EMOJIS.IP} IP`, value: `${currentIP}/${maxIP}`, inline: true },
+                    { name: `${RESOURCE_EMOJIS.Armor} Armor`, value: `${maxArmor}/${maxArmor}`, inline: true },
+                    { name: `${RESOURCE_EMOJIS.Barrier} Barrier`, value: `${maxBarrier}/${maxBarrier}`, inline: true }
+                )
+                .setFooter({ text: 'HP, MP, Armor, and Barrier set to max. IP preserved.' })
+                .setTimestamp();
+            
+            message.reply({ embeds: [embed] });
             return;
         }
         
