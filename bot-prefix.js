@@ -342,6 +342,15 @@ client.on('messageCreate', async message => {
     const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
     const command = args.shift().toLowerCase();
     
+    // Helper: Delete user's command message
+    const deleteCommand = async (msg) => {
+        try {
+            await msg.delete();
+        } catch (err) {
+            // Ignore if bot doesn't have Manage Messages permission
+        }
+    };
+    
     try {
         // Guide
         if (command === 'guide') {
@@ -351,44 +360,41 @@ client.on('messageCreate', async message => {
         
         // Set (create/update character)
         if (command === 'set') {
-            const targetUser = message.mentions.users.first();
-            
-            if (!targetUser) {
-                message.reply('Usage: `$set @player <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set @Gandalf Gandalf 100 50 100 20 15`');
-                return;
-            }
-            
-            if (args.length < 7) {
-                message.reply('Usage: `$set @player <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set @Gandalf Gandalf 100 50 100 20 15`');
-                return;
-            }
-            
+            const targetUser = message.mentions.users.first() || message.author;
             const targetMember = await message.guild.members.fetch(targetUser.id);
-            const characterName = args[1];
-            const maxHP = parseInt(args[2]);
-            const maxMP = parseInt(args[3]);
-            const maxIP = parseInt(args[4]);
-            const maxArmor = parseInt(args[5]);
-            const maxBarrier = parseInt(args[6]);
             
-            // Validate numbers
-            if (isNaN(maxHP) || isNaN(maxMP) || isNaN(maxIP) || isNaN(maxArmor) || isNaN(maxBarrier)) {
-                message.reply('❌ All stats must be numbers!\nExample: `$set @Gandalf Gandalf 100 50 100 20 15`');
+            const offset = message.mentions.users.first() ? 1 : 0;
+            
+            if (args.length < 5 + offset) {
+                await message.reply('Usage: `$set <name> <hp> <mp> <ip> <armor> <barrier>`
+Example: `$set Gandalf 100 50 100 20 15`');
+                await deleteCommand(message);
                 return;
             }
             
-            // Create or update character
-            const existingData = playerData.get(targetUser.id);
-            const currentIP = existingData ? existingData.IP : 0;
+            const characterName = args[offset];
+            const maxHP = parseInt(args[offset + 1]);
+            const maxMP = parseInt(args[offset + 2]);
+            const maxIP = parseInt(args[offset + 3]);
+            const maxArmor = parseInt(args[offset + 4]);
+            const maxBarrier = parseInt(args[offset + 5]);
             
+            if (isNaN(maxHP) || isNaN(maxMP) || isNaN(maxIP) || isNaN(maxArmor) || isNaN(maxBarrier)) {
+                await message.reply('❌ All stats must be numbers!
+Example: `$set Gandalf 100 50 100 20 15`');
+                await deleteCommand(message);
+                return;
+            }
+            
+            // HP/MP/IP start FULL, Armor/Barrier start ZERO
             playerData.set(targetUser.id, {
                 username: targetMember.displayName,
                 characterName: characterName,
                 HP: maxHP,
                 MP: maxMP,
-                IP: currentIP, // Preserve current IP
-                Armor: maxArmor,
-                Barrier: maxBarrier,
+                IP: maxIP,
+                Armor: 0,
+                Barrier: 0,
                 maxHP: maxHP,
                 maxMP: maxMP,
                 maxIP: maxIP,
@@ -397,26 +403,24 @@ client.on('messageCreate', async message => {
                 statusEffects: []
             });
             
-            // Save to database if available
-            if (useDatabase) {
-                await saveCharacterSheet(targetUser.id, playerData.get(targetUser.id));
-            }
+            await saveCharacterSheet(targetUser.id, playerData.get(targetUser.id));
             
             const embed = new EmbedBuilder()
                 .setColor(0x00FF00)
-                .setTitle(`✨ Character Set: ${characterName}`)
-                .setDescription('Character created/updated successfully!')
+                .setTitle(`✨ ${characterName}`)
+                .setDescription('Character saved to database!')
                 .addFields(
                     { name: `${RESOURCE_EMOJIS.HP} HP`, value: `${maxHP}/${maxHP}`, inline: true },
                     { name: `${RESOURCE_EMOJIS.MP} MP`, value: `${maxMP}/${maxMP}`, inline: true },
-                    { name: `${RESOURCE_EMOJIS.IP} IP`, value: `${currentIP}/${maxIP}`, inline: true },
-                    { name: `${RESOURCE_EMOJIS.Armor} Armor`, value: `${maxArmor}/${maxArmor}`, inline: true },
-                    { name: `${RESOURCE_EMOJIS.Barrier} Barrier`, value: `${maxBarrier}/${maxBarrier}`, inline: true }
+                    { name: `${RESOURCE_EMOJIS.IP} IP`, value: `${maxIP}/${maxIP}`, inline: true },
+                    { name: `${RESOURCE_EMOJIS.Armor} Armor`, value: `0/${maxArmor}`, inline: true },
+                    { name: `${RESOURCE_EMOJIS.Barrier} Barrier`, value: `0/${maxBarrier}`, inline: true }
                 )
-                .setFooter({ text: 'HP, MP, Armor, and Barrier set to max. IP preserved.' })
+                .setFooter({ text: 'HP/MP/IP full • Armor/Barrier 0' })
                 .setTimestamp();
             
-            message.reply({ embeds: [embed] });
+            await message.reply({ embeds: [embed] });
+            await deleteCommand(message);
             return;
         }
         
@@ -441,6 +445,7 @@ client.on('messageCreate', async message => {
                 .setTimestamp();
             
             message.reply({ embeds: [embed] });
+            await deleteCommand(message);
             return;
         }
         
@@ -564,7 +569,8 @@ client.on('messageCreate', async message => {
         // HP (fast!)
         if (command === 'hp') {
             if (args.length === 0) {
-                message.reply('Usage: `$hp <amount|full|zero>`\nExample: `$hp -20` or `$hp full`');
+                await message.reply('Usage: `$hp <amount|full|zero>`');
+                await deleteCommand(message);
                 return;
             }
             
@@ -583,14 +589,26 @@ client.on('messageCreate', async message => {
                 data.HP = Math.max(0, Math.min(data.maxHP, data.HP + amount));
             }
             
-            message.reply(`❤️ **${data.characterName}** HP: ${oldHP} → ${data.HP}/${data.maxHP}`);
+            const embed = new EmbedBuilder()
+                .setColor(data.HP > oldHP ? 0x00FF00 : 0xFF6B6B)
+                .setTitle(`${data.characterName}`)
+                .addFields({
+                    name: `${RESOURCE_EMOJIS.HP} HP`,
+                    value: `${oldHP} → **${data.HP}**/${data.maxHP}`,
+                    inline: true
+                })
+                .setTimestamp();
+            
+            await message.reply({ embeds: [embed] });
+            await deleteCommand(message);
             return;
         }
         
         // MP (fast!)
         if (command === 'mp') {
             if (args.length === 0) {
-                message.reply('Usage: `$mp <amount|full|zero>`');
+                await message.reply('Usage: `$mp <amount|full|zero>`');
+                await deleteCommand(message);
                 return;
             }
             
@@ -609,14 +627,26 @@ client.on('messageCreate', async message => {
                 data.MP = Math.max(0, Math.min(data.maxMP, data.MP + amount));
             }
             
-            message.reply(`💧 **${data.characterName}** MP: ${oldMP} → ${data.MP}/${data.maxMP}`);
+            const embed = new EmbedBuilder()
+                .setColor(data.MP > oldMP ? 0x00FF00 : 0xFF6B6B)
+                .setTitle(`${data.characterName}`)
+                .addFields({
+                    name: `${RESOURCE_EMOJIS.MP} MP`,
+                    value: `${oldMP} → **${data.MP}**/${data.maxMP}`,
+                    inline: true
+                })
+                .setTimestamp();
+            
+            await message.reply({ embeds: [embed] });
+            await deleteCommand(message);
             return;
         }
         
         // Armor (fast!)
         if (command === 'armor') {
             if (args.length === 0) {
-                message.reply('Usage: `$armor <amount|full|zero>`');
+                await message.reply('Usage: `$armor <amount|full|zero>`');
+                await deleteCommand(message);
                 return;
             }
             
@@ -635,14 +665,26 @@ client.on('messageCreate', async message => {
                 data.Armor = Math.max(0, data.Armor + amount);
             }
             
-            message.reply(`💥 **${data.characterName}** Armor: ${oldArmor} → ${data.Armor}/${data.maxArmor}`);
+            const embed = new EmbedBuilder()
+                .setColor(data.Armor > oldArmor ? 0x00FF00 : 0xFF6B6B)
+                .setTitle(`${data.characterName}`)
+                .addFields({
+                    name: `${RESOURCE_EMOJIS.Armor} Armor`,
+                    value: `${oldArmor} → **${data.Armor}**/${data.maxArmor}`,
+                    inline: true
+                })
+                .setTimestamp();
+            
+            await message.reply({ embeds: [embed] });
+            await deleteCommand(message);
             return;
         }
         
         // Barrier (fast!)
         if (command === 'barrier') {
             if (args.length === 0) {
-                message.reply('Usage: `$barrier <amount|full|zero>`');
+                await message.reply('Usage: `$barrier <amount|full|zero>`');
+                await deleteCommand(message);
                 return;
             }
             
@@ -661,7 +703,18 @@ client.on('messageCreate', async message => {
                 data.Barrier = Math.max(0, data.Barrier + amount);
             }
             
-            message.reply(`🛡️ **${data.characterName}** Barrier: ${oldBarrier} → ${data.Barrier}/${data.maxBarrier}`);
+            const embed = new EmbedBuilder()
+                .setColor(data.Barrier > oldBarrier ? 0x00FF00 : 0xFF6B6B)
+                .setTitle(`${data.characterName}`)
+                .addFields({
+                    name: `${RESOURCE_EMOJIS.Barrier} Barrier`,
+                    value: `${oldBarrier} → **${data.Barrier}**/${data.maxBarrier}`,
+                    inline: true
+                })
+                .setTimestamp();
+            
+            await message.reply({ embeds: [embed] });
+            await deleteCommand(message);
             return;
         }
         
@@ -678,6 +731,7 @@ client.on('messageCreate', async message => {
             data.Barrier += data.maxBarrier;
             
             message.reply(`🛡️ **${data.characterName}** defended!\n💥 Armor: ${oldArmor} +${data.maxArmor} = ${data.Armor}\n🛡️ Barrier: ${oldBarrier} +${data.maxBarrier} = ${data.Barrier}`);
+            await deleteCommand(message);
             return;
         }
         
@@ -693,6 +747,7 @@ client.on('messageCreate', async message => {
             data.Barrier = 0;
             
             message.reply(`💨 **${data.characterName}** turn reset!\n💥 Armor: 0\n🛡️ Barrier: 0`);
+            await deleteCommand(message);
             return;
         }
         
@@ -706,6 +761,7 @@ client.on('messageCreate', async message => {
             data.MP = data.maxMP;
             
             message.reply(`✨ **${data.characterName}** rested!\n❤️ HP: ${data.HP}/${data.maxHP}\n💧 MP: ${data.MP}/${data.maxMP}`);
+            await deleteCommand(message);
             return;
         }
         
@@ -822,6 +878,7 @@ client.on('messageCreate', async message => {
             });
             return;
         }
+            await deleteCommand(message);
         
         // Clash management
         if (command === 'clash') {
@@ -863,13 +920,28 @@ client.on('messageCreate', async message => {
                 let added = 0;
                 for (const [userId, user] of mentioned) {
                     if (!activeEncounter.combatants.includes(userId)) {
-                        // Load from database if exists
+                        // Load from database FIRST
                         const dbData = await loadPlayerFromDB(userId);
                         if (dbData) {
                             playerData.set(userId, dbData);
                         } else {
+                            // Not in DB, create default
                             const member = await message.guild.members.fetch(userId);
-                            initPlayer(userId, member.displayName);
+                            playerData.set(userId, {
+                                username: member.displayName,
+                                characterName: member.displayName,
+                                HP: 100,
+                                MP: 50,
+                                IP: 100,
+                                Armor: 0,
+                                Barrier: 0,
+                                maxHP: 100,
+                                maxMP: 50,
+                                maxIP: 100,
+                                maxArmor: 20,
+                                maxBarrier: 15,
+                                statusEffects: []
+                            });
                         }
                         
                         activeEncounter.combatants.push(userId);
@@ -941,6 +1013,7 @@ client.on('messageCreate', async message => {
             const name = data ? data.characterName : targetUser.username;
             
             message.reply(`✅ **${name}** ended their turn!`);
+            await deleteCommand(message);
             return;
         }
         
@@ -956,6 +1029,7 @@ client.on('messageCreate', async message => {
             const mentions = activeEncounter.combatants.map(id => `<@${id}>`).join(' ');
             
             message.reply(`🔄 **New Round Started!**\n✅ Turn tracker reset\n\n${mentions}`);
+            await deleteCommand(message);
             return;
         }
         
