@@ -1,0 +1,17 @@
+{
+  "name": "discord-combat-bot",
+  "version": "2.0.0",
+  "description": "Fast prefix-based combat tracker",
+  "main": "bot-prefix.js",
+  "scripts": {
+    "start": "node bot-prefix.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
