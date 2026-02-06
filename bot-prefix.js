@@ -331,7 +331,16 @@ client.on('messageCreate', async message => {
             d.Armor += d.maxArmor;
             d.Barrier += d.maxBarrier;
             
-            await message.channel.send(`🛡️ **${d.characterName}** defended!\n💥 Armor: ${oldA} +${d.maxArmor} = ${d.Armor}\n🛡️ Barrier: ${oldB} +${d.maxBarrier} = ${d.Barrier}`);
+            const embed = new EmbedBuilder()
+                .setColor(0x00FF00)
+                .setTitle(`🛡️ ${d.characterName}`)
+                .setDescription('**Defended!**')
+                .addFields(
+                    { name: `${EMOJIS.Armor} Armor`, value: `${oldA} +${d.maxArmor} = **${d.Armor}**`, inline: true },
+                    { name: `${EMOJIS.Barrier} Barrier`, value: `${oldB} +${d.maxBarrier} = **${d.Barrier}**`, inline: true }
+                );
+            
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
@@ -345,7 +354,16 @@ client.on('messageCreate', async message => {
             d.Armor = 0;
             d.Barrier = 0;
             
-            await message.channel.send(`💨 **${d.characterName}** turn reset!\n💥 Armor: 0\n🛡️ Barrier: 0`);
+            const embed = new EmbedBuilder()
+                .setColor(0xFF6B6B)
+                .setTitle(`💨 ${d.characterName}`)
+                .setDescription('**Turn Reset!**')
+                .addFields(
+                    { name: `${EMOJIS.Armor} Armor`, value: `**0**/${d.maxArmor}`, inline: true },
+                    { name: `${EMOJIS.Barrier} Barrier`, value: `**0**/${d.maxBarrier}`, inline: true }
+                );
+            
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
@@ -358,7 +376,16 @@ client.on('messageCreate', async message => {
             d.HP = d.maxHP;
             d.MP = d.maxMP;
             
-            await message.channel.send(`✨ **${d.characterName}** rested!\n❤️ HP: ${d.HP}/${d.maxHP}\n💧 MP: ${d.MP}/${d.maxMP}`);
+            const embed = new EmbedBuilder()
+                .setColor(0x00FFFF)
+                .setTitle(`✨ ${d.characterName}`)
+                .setDescription('**Rested!**')
+                .addFields(
+                    { name: `${EMOJIS.HP} HP`, value: `**${d.HP}**/${d.maxHP}`, inline: true },
+                    { name: `${EMOJIS.MP} MP`, value: `**${d.MP}**/${d.maxMP}`, inline: true }
+                );
+            
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
@@ -492,16 +519,21 @@ client.on('messageCreate', async message => {
                 if (!activeEncounter.active) { await message.channel.send('❌ No clash.'); await del(); return; }
                 if (activeEncounter.combatants.length === 0) { await message.channel.send('⚔️ No combatants.'); await del(); return; }
                 
-                let list = '**Clash:**\n\n';
+                const embed = new EmbedBuilder()
+                    .setColor(0xFFAA00)
+                    .setTitle('⚔️ Clash Combatants')
+                    .setTimestamp();
+                
                 for (const userId of activeEncounter.combatants) {
                     const d = playerData.get(userId);
                     if (d) {
                         const icon = activeEncounter.turnsTaken.has(userId) ? '✅' : '⬜';
-                        list += `${icon} **${d.characterName}**\n❤️ ${d.HP}/${d.maxHP} | 💧 ${d.MP}/${d.maxMP} | 💥 ${d.Armor}/${d.maxArmor} | 🛡️ ${d.Barrier}/${d.maxBarrier}\n\n`;
+                        const value = `${EMOJIS.HP} ${d.HP}/${d.maxHP} | ${EMOJIS.MP} ${d.MP}/${d.maxMP} | ${EMOJIS.Armor} ${d.Armor}/${d.maxArmor} | ${EMOJIS.Barrier} ${d.Barrier}/${d.maxBarrier}`;
+                        embed.addFields({ name: `${icon} ${d.characterName}`, value: value, inline: false });
                     }
                 }
                 
-                await message.channel.send(list);
+                await message.channel.send({ embeds: [embed] });
                 await del();
                 return;
             }
@@ -551,60 +583,62 @@ client.on('interactionCreate', async interaction => {
         const d = playerData.get(userId);
         
         const oldA = d.Armor, oldB = d.Barrier, oldHP = d.HP;
-        let result = '';
+        const isDefend = action === 'defend';
         
-        if (action === 'defend') {
+        const embed = new EmbedBuilder()
+            .setColor(isDefend ? 0x00FF00 : 0xFF6B6B)
+            .setTitle(`${isDefend ? '🛡️' : '💔'} ${d.characterName}`)
+            .setDescription(isDefend ? '**DEFENDED!**' : '**Took the hit!**');
+        
+        if (isDefend) {
             d.Armor += d.maxArmor;
             d.Barrier += d.maxBarrier;
-            
-            if (dmgType === 'armor') {
-                const overflow = Math.max(0, dmg - d.Armor);
-                d.Armor = Math.max(0, d.Armor - dmg);
-                if (overflow > 0) {
-                    d.HP = Math.max(0, d.HP - overflow);
-                    result = `**${d.characterName}** DEFENDED!\n💥 Armor: ${oldA} +${d.maxArmor} = ${oldA + d.maxArmor} → ${d.Armor}\n🛡️ Barrier: ${oldB} +${d.maxBarrier} = ${d.Barrier}\n💔 Overflow: ${overflow} → HP: ${oldHP} → ${d.HP}`;
-                } else {
-                    result = `**${d.characterName}** DEFENDED!\n💥 Armor: ${oldA} +${d.maxArmor} = ${oldA + d.maxArmor} → ${d.Armor}\n🛡️ Barrier: ${oldB} +${d.maxBarrier} = ${d.Barrier}`;
-                }
-            } else if (dmgType === 'barrier') {
-                const overflow = Math.max(0, dmg - d.Barrier);
-                d.Barrier = Math.max(0, d.Barrier - dmg);
-                if (overflow > 0) {
-                    d.HP = Math.max(0, d.HP - overflow);
-                    result = `**${d.characterName}** DEFENDED!\n💥 Armor: ${oldA} +${d.maxArmor} = ${d.Armor}\n🛡️ Barrier: ${oldB} +${d.maxBarrier} = ${oldB + d.maxBarrier} → ${d.Barrier}\n💔 Overflow: ${overflow} → HP: ${oldHP} → ${d.HP}`;
-                } else {
-                    result = `**${d.characterName}** DEFENDED!\n💥 Armor: ${oldA} +${d.maxArmor} = ${d.Armor}\n🛡️ Barrier: ${oldB} +${d.maxBarrier} = ${oldB + d.maxBarrier} → ${d.Barrier}`;
-                }
-            } else {
-                d.HP = Math.max(0, d.HP - dmg);
-                result = `**${d.characterName}** DEFENDED!\n💥 Armor: ${oldA} +${d.maxArmor} = ${d.Armor}\n🛡️ Barrier: ${oldB} +${d.maxBarrier} = ${d.Barrier}\n💔 True: ${dmg} → HP: ${oldHP} → ${d.HP}`;
-            }
-        } else {
-            if (dmgType === 'armor') {
-                const overflow = Math.max(0, dmg - d.Armor);
-                d.Armor = Math.max(0, d.Armor - dmg);
-                if (overflow > 0) {
-                    d.HP = Math.max(0, d.HP - overflow);
-                    result = `**${d.characterName}** took it!\n💥 Armor: ${oldA} → ${d.Armor}\n💔 Overflow: ${overflow} → HP: ${oldHP} → ${d.HP}`;
-                } else {
-                    result = `**${d.characterName}** took it!\n💥 Armor: ${oldA} → ${d.Armor}`;
-                }
-            } else if (dmgType === 'barrier') {
-                const overflow = Math.max(0, dmg - d.Barrier);
-                d.Barrier = Math.max(0, d.Barrier - dmg);
-                if (overflow > 0) {
-                    d.HP = Math.max(0, d.HP - overflow);
-                    result = `**${d.characterName}** took it!\n🛡️ Barrier: ${oldB} → ${d.Barrier}\n💔 Overflow: ${overflow} → HP: ${oldHP} → ${d.HP}`;
-                } else {
-                    result = `**${d.characterName}** took it!\n🛡️ Barrier: ${oldB} → ${d.Barrier}`;
-                }
-            } else {
-                d.HP = Math.max(0, d.HP - dmg);
-                result = `**${d.characterName}** took it!\n💔 True: ${dmg} → HP: ${oldHP} → ${d.HP}`;
-            }
         }
         
-        await interaction.reply({ content: result });
+        // Apply damage
+        if (dmgType === 'armor') {
+            const overflow = Math.max(0, dmg - d.Armor);
+            d.Armor = Math.max(0, d.Armor - dmg);
+            
+            if (isDefend) {
+                embed.addFields({ name: `${EMOJIS.Armor} Armor`, value: `${oldA} +${d.maxArmor} = ${oldA + d.maxArmor} → **${d.Armor}**`, inline: true });
+                embed.addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${oldB} +${d.maxBarrier} = **${d.Barrier}**`, inline: true });
+            } else {
+                embed.addFields({ name: `${EMOJIS.Armor} Armor`, value: `${oldA} → **${d.Armor}**`, inline: true });
+            }
+            
+            if (overflow > 0) {
+                d.HP = Math.max(0, d.HP - overflow);
+                embed.addFields({ name: '💔 Overflow', value: `${overflow} dmg → HP: ${oldHP} → **${d.HP}**`, inline: false });
+            }
+        } else if (dmgType === 'barrier') {
+            const overflow = Math.max(0, dmg - d.Barrier);
+            d.Barrier = Math.max(0, d.Barrier - dmg);
+            
+            if (isDefend) {
+                embed.addFields({ name: `${EMOJIS.Armor} Armor`, value: `${oldA} +${d.maxArmor} = **${d.Armor}**`, inline: true });
+                embed.addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${oldB} +${d.maxBarrier} = ${oldB + d.maxBarrier} → **${d.Barrier}**`, inline: true });
+            } else {
+                embed.addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${oldB} → **${d.Barrier}**`, inline: true });
+            }
+            
+            if (overflow > 0) {
+                d.HP = Math.max(0, d.HP - overflow);
+                embed.addFields({ name: '💔 Overflow', value: `${overflow} dmg → HP: ${oldHP} → **${d.HP}**`, inline: false });
+            }
+        } else {
+            // True damage
+            d.HP = Math.max(0, d.HP - dmg);
+            
+            if (isDefend) {
+                embed.addFields({ name: `${EMOJIS.Armor} Armor`, value: `${oldA} +${d.maxArmor} = **${d.Armor}**`, inline: true });
+                embed.addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${oldB} +${d.maxBarrier} = **${d.Barrier}**`, inline: true });
+            }
+            
+            embed.addFields({ name: '💔 True Damage', value: `${dmg} → HP: ${oldHP} → **${d.HP}**`, inline: false });
+        }
+        
+        await interaction.reply({ embeds: [embed] });
     } catch (err) {
         console.error('Button error:', err);
         await interaction.reply({ content: '❌ Error', ephemeral: true });
