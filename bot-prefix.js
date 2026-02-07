@@ -185,58 +185,10 @@ client.on('messageCreate', async message => {
             return;
         }
         
-        // $c <d1> <d2> <mod> <gate> [mp]
-        if (cmd === 'c' || cmd === 'cast') {
-            if (args.length < 4) {
-                await message.channel.send('Usage: `$c <d1> <d2> <mod> <gate> [mp]`');
-                await del();
-                return;
-            }
-            
-            const [d1, d2, mod, gate, mpCost] = [parseInt(args[0]), parseInt(args[1]), parseInt(args[2]), parseInt(args[3]), args[4] ? parseInt(args[4]) : 10];
-            const userId = message.author.id;
-            initPlayer(userId, message.member.displayName);
-            const data = playerData.get(userId);
-            
-            if (data.MP < mpCost) {
-                await message.channel.send(`❌ Not enough MP! Need ${mpCost}, have ${data.MP}`);
-                await del();
-                return;
-            }
-            
-            data.MP -= mpCost;
-            
-            const r1 = Math.floor(Math.random() * d1) + 1;
-            const r2 = Math.floor(Math.random() * d2) + 1;
-            const hr = Math.max(r1, r2);
-            const dmg = hr + mod;
-            
-            const fumble = r1 === 1 && r2 === 1;
-            const crit = !fumble && r1 === r2 && r1 >= 6;
-            const hit = fumble ? false : crit ? true : (r1 > gate && r2 > gate);
-            
-            const embed = new EmbedBuilder()
-                .setColor(fumble ? 0x800000 : crit ? 0xFFD700 : hit ? 0x00FF00 : 0xFF0000)
-                .setTitle(`✨ ${data.characterName}'s Cast`)
-                .addFields(
-                    { name: 'MP', value: `${data.MP + mpCost} → ${data.MP} (-${mpCost})`, inline: false },
-                    { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: ≤${gate}`, inline: false },
-                    { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}**`, inline: false }
-                );
-            
-            if (fumble) embed.setDescription('💀 **FUMBLE!**');
-            else if (crit) embed.setDescription('⭐ **CRITICAL!**');
-            else if (hit) embed.setDescription('✅ **HIT!**');
-            else embed.setDescription('❌ **MISS**');
-            
-            await message.channel.send({ embeds: [embed] });
-            await del();
-            return;
-        }
         
-        // $hp <amount|full|zero>
+        // $hp <±amount|full|zero>
         if (cmd === 'hp') {
-            if (!args[0]) { await message.channel.send('Usage: `$hp <amount|full|zero>`'); await del(); return; }
+            if (!args[0]) { await message.channel.send('Usage: `$hp <±amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
             initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
@@ -244,7 +196,7 @@ client.on('messageCreate', async message => {
             
             if (args[0] === 'full') d.HP = d.maxHP;
             else if (args[0] === 'zero') d.HP = 0;
-            else d.HP = Math.max(0, Math.min(d.maxHP, d.HP + parseInt(args[0])));
+            else d.HP = Math.max(0, d.HP + parseInt(args[0]));
             
             const embed = new EmbedBuilder()
                 .setColor(d.HP > old ? 0x00FF00 : 0xFF6B6B)
@@ -258,7 +210,7 @@ client.on('messageCreate', async message => {
         
         // $mp
         if (cmd === 'mp') {
-            if (!args[0]) { await message.channel.send('Usage: `$mp <amount|full|zero>`'); await del(); return; }
+            if (!args[0]) { await message.channel.send('Usage: `$mp <±amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
             initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
@@ -266,12 +218,34 @@ client.on('messageCreate', async message => {
             
             if (args[0] === 'full') d.MP = d.maxMP;
             else if (args[0] === 'zero') d.MP = 0;
-            else d.MP = Math.max(0, Math.min(d.maxMP, d.MP + parseInt(args[0])));
+            else d.MP = Math.max(0, d.MP + parseInt(args[0]));
             
             const embed = new EmbedBuilder()
                 .setColor(d.MP > old ? 0x00FF00 : 0xFF6B6B)
                 .setTitle(d.characterName)
                 .addFields({ name: `${EMOJIS.MP} MP`, value: `${old} → **${d.MP}**/${d.maxMP}`, inline: true });
+            
+            await message.channel.send({ embeds: [embed] });
+            await del();
+            return;
+        }
+        
+        // $ip
+        if (cmd === 'ip') {
+            if (!args[0]) { await message.channel.send('Usage: `$ip <±amount|full|zero>`'); await del(); return; }
+            const userId = message.author.id;
+            initPlayer(userId, message.member.displayName);
+            const d = playerData.get(userId);
+            const old = d.IP;
+            
+            if (args[0] === 'full') d.IP = d.maxIP;
+            else if (args[0] === 'zero') d.IP = 0;
+            else d.IP = Math.max(0, d.IP + parseInt(args[0]));
+            
+            const embed = new EmbedBuilder()
+                .setColor(d.IP > old ? 0x00FF00 : 0xFF6B6B)
+                .setTitle(d.characterName)
+                .addFields({ name: `${EMOJIS.IP} IP`, value: `${old} → **${d.IP}**/${d.maxIP}`, inline: true });
             
             await message.channel.send({ embeds: [embed] });
             await del();
@@ -375,6 +349,8 @@ client.on('messageCreate', async message => {
             const d = playerData.get(userId);
             d.HP = d.maxHP;
             d.MP = d.maxMP;
+            d.Armor = 0;
+            d.Barrier = 0;
             
             const embed = new EmbedBuilder()
                 .setColor(0x00FFFF)
@@ -382,7 +358,9 @@ client.on('messageCreate', async message => {
                 .setDescription('**Rested!**')
                 .addFields(
                     { name: `${EMOJIS.HP} HP`, value: `**${d.HP}**/${d.maxHP}`, inline: true },
-                    { name: `${EMOJIS.MP} MP`, value: `**${d.MP}**/${d.maxMP}`, inline: true }
+                    { name: `${EMOJIS.MP} MP`, value: `**${d.MP}**/${d.maxMP}`, inline: true },
+                    { name: `${EMOJIS.Armor} Armor`, value: `**0**/${d.maxArmor}`, inline: true },
+                    { name: `${EMOJIS.Barrier} Barrier`, value: `**0**/${d.maxBarrier}`, inline: true }
                 );
             
             await message.channel.send({ embeds: [embed] });
@@ -390,10 +368,10 @@ client.on('messageCreate', async message => {
             return;
         }
         
-        // $gmattack <d1> <d2> <mod> <gate> <@targets> [armor|barrier|true]
-        if (cmd === 'gmattack') {
+        // $ga <d1> <d2> <mod> <gate> <@targets> [a|b|t]
+        if (cmd === 'ga') {
             if (args.length < 5) {
-                await message.channel.send('Usage: `$gmattack <d1> <d2> <mod> <gate> <@targets> [armor|barrier|true]`');
+                await message.channel.send('Usage: `$ga <d1> <d2> <mod> <gate> <@targets> [a|b|t]`\n`a`=armor, `b`=barrier, `t`=true');
                 await del();
                 return;
             }
@@ -402,8 +380,14 @@ client.on('messageCreate', async message => {
             
             let dmgType = 'armor';
             const last = args[args.length - 1].toLowerCase();
-            if (last === 'armor' || last === 'barrier' || last === 'true') {
-                dmgType = last;
+            if (last === 'a') {
+                dmgType = 'armor';
+                args.pop();
+            } else if (last === 'b') {
+                dmgType = 'barrier';
+                args.pop();
+            } else if (last === 't') {
+                dmgType = 'true';
                 args.pop();
             }
             
@@ -453,11 +437,11 @@ client.on('messageCreate', async message => {
             
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
-                    .setCustomId(`gmattack_defend_${dmg}_${dmgType}_${message.id}`)
+                    .setCustomId(`ga_defend_${dmg}_${dmgType}_${message.id}`)
                     .setLabel('🛡️ Defend')
                     .setStyle(ButtonStyle.Success),
                 new ButtonBuilder()
-                    .setCustomId(`gmattack_take_${dmg}_${dmgType}_${message.id}`)
+                    .setCustomId(`ga_take_${dmg}_${dmgType}_${message.id}`)
                     .setLabel('💔 Take Damage')
                     .setStyle(ButtonStyle.Danger)
             );
@@ -547,11 +531,47 @@ client.on('messageCreate', async message => {
         if (cmd === 'guide') {
             const embed = new EmbedBuilder()
                 .setColor(0x00BFFF)
-                .setTitle('📖 Commands')
+                .setTitle('📖 Command Guide')
+                .setDescription('**Examples with actual values:**')
                 .addFields(
-                    { name: 'Setup', value: '`$set <name> <hp> <mp> <ip> <armor> <barrier>`\n`$view` - View stats', inline: false },
-                    { name: 'Combat', value: '`$a <d1> <d2> <mod> <gate>` - Attack\n`$c <d1> <d2> <mod> <gate> [mp]` - Cast\n`$hp/mp/armor/barrier <±amount|full|zero>`\n`$defend` `$turn` `$rest`', inline: false },
-                    { name: 'GM', value: '`$gmattack <d1> <d2> <mod> <gate> <@targets> [type]`', inline: false },
+                    { 
+                        name: '🎮 Setup', 
+                        value: '`$set <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set Gandalf 100 50 100 20 15`\n\n`$view` or `$view @player`', 
+                        inline: false 
+                    },
+                    { 
+                        name: '⚔️ Attack', 
+                        value: '`$a <dice1> <dice2> <modifier> <gate>`\nExample: `$a 10 8 5 1`\n(Roll d10+d8, +5 modifier, gate ≤1)', 
+                        inline: false 
+                    },
+                    { 
+                        name: '💉 Resources (Can Exceed Max)', 
+                        value: '`$hp <±amount|full|zero>` HP can go above max\n`$mp <±amount|full|zero>` MP can go above max\n`$ip <±amount|full|zero>`\n`$armor <±amount|full|zero>`\n`$barrier <±amount|full|zero>`\n\nExamples:\n`$hp -20` (lose 20)\n`$mp +50` (gain 50, can exceed max)\n`$armor full` (set to max)', 
+                        inline: false 
+                    },
+                    { 
+                        name: '🛡️ Quick Actions', 
+                        value: '`$defend` - Add max armor+barrier to current\n`$turn` or `$turn @player` - Set armor/barrier to 0\n`$rest` - HP/MP to max, armor/barrier to 0', 
+                        inline: false 
+                    },
+                    { 
+                        name: '🎲 GM Attack', 
+                        value: '`$ga <d1> <d2> <mod> <gate> @targets [type]`\nExample: `$ga 10 8 15 1 @Tank @DPS`\nExample: `$ga 12 6 20 2 @Wizard b`\n\n**Types:** `a`=armor (default), `b`=barrier, `t`=true', 
+                        inline: false 
+                    },
+                    { 
+                        name: '⚔️ Clash', 
+                        value: '`$clash start` - Start encounter\n`$clash add @player1 @player2` - Add players\n`$clash list` - Show all with stats\n`$clash end` - End encounter', 
+                        inline: false 
+                    }
+                )
+                .setFooter({ text: 'Tip: HP/MP can go above max | Use + or - for amounts' });
+            
+            await message.channel.send({ embeds: [embed] });
+            await del();
+            return;
+        },
+                    { name: 'GM', value: '`$ga <d1> <d2> <mod> <gate> <@targets> [type]`', inline: false },
                     { name: 'Clash', value: '`$clash start|end|add|list`', inline: false }
                 );
             
@@ -566,12 +586,12 @@ client.on('messageCreate', async message => {
     }
 });
 
-// Button handler for gmattack
+// Button handler for ga
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
     
     const parts = interaction.customId.split('_');
-    if (parts[0] !== 'gmattack') return;
+    if (parts[0] !== 'ga') return;
     
     try {
         const [, action, dmgStr, dmgType] = parts;
