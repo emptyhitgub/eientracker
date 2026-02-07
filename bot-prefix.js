@@ -570,14 +570,6 @@ client.on('messageCreate', async message => {
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
-        },
-                    { name: 'GM', value: '`$ga <d1> <d2> <mod> <gate> <@targets> [type]`', inline: false },
-                    { name: 'Clash', value: '`$clash start|end|add|list`', inline: false }
-                );
-            
-            await message.channel.send({ embeds: [embed] });
-            await del();
-            return;
         }
         
     } catch (err) {
