@@ -23,7 +23,7 @@ if (useDatabase) {
 const playerData = new Map();
 const activeEncounter = { active: false, combatants: [], turnsTaken: new Set() };
 
-const EMOJIS = { HP: '❤️', MP: '💧', IP: '💰', Armor: '💥', Barrier: '🛡️' };
+const EMOJIS = { HP: '❤️', MP: '💧', IP: '💰', Armor: '🛡️', Barrier: '✨' };
 
 function initPlayer(userId, username) {
     if (!playerData.has(userId)) {
