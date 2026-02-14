@@ -368,6 +368,41 @@ client.on('messageCreate', async message => {
             return;
         }
         
+        // $round
+        if (cmd === 'round') {
+            if (!activeEncounter.active) {
+                await message.channel.send('❌ No active clash. Use `$clash start`');
+                await del();
+                return;
+            }
+            
+            let cleared = 0;
+            for (const userId of activeEncounter.combatants) {
+                const d = playerData.get(userId);
+                if (d) {
+                    d.Armor = 0;
+                    d.Barrier = 0;
+                    cleared++;
+                }
+            }
+            
+            activeEncounter.turnsTaken.clear();
+            
+            const embed = new EmbedBuilder()
+                .setColor(0xFFAA00)
+                .setTitle('🔄 New Round!')
+                .setDescription(`Cleared **${cleared}** combatants`)
+                .addFields(
+                    { name: '🛡️ Armor', value: 'Set to **0**', inline: true },
+                    { name: '✨ Barrier', value: 'Set to **0**', inline: true },
+                    { name: '✅ Turns', value: 'Reset', inline: true }
+                );
+            
+            await message.channel.send({ embeds: [embed] });
+            await del();
+            return;
+        }
+        
         // $ga <d1> <d2> <mod> <gate> <@targets> [a|b|t]
         if (cmd === 'ga') {
             if (args.length < 5) {
@@ -473,6 +508,32 @@ client.on('messageCreate', async message => {
                 return;
             }
             
+            if (sub === 'join') {
+                if (!activeEncounter.active) { await message.channel.send('❌ No clash. Use `$clash start`'); await del(); return; }
+                
+                const userId = message.author.id;
+                
+                if (activeEncounter.combatants.includes(userId)) {
+                    await message.channel.send('❌ You\'re already in the clash!');
+                    await del();
+                    return;
+                }
+                
+                const dbData = await loadPlayerFromDB(userId);
+                if (dbData) {
+                    playerData.set(userId, dbData);
+                } else {
+                    initPlayer(userId, message.member.displayName);
+                }
+                
+                activeEncounter.combatants.push(userId);
+                const d = playerData.get(userId);
+                
+                await message.channel.send(`✅ **${d.characterName}** joined the clash!`);
+                await del();
+                return;
+            }
+            
             if (sub === 'add') {
                 if (!activeEncounter.active) { await message.channel.send('❌ No clash. Use `$clash start`'); await del(); return; }
                 
@@ -512,7 +573,7 @@ client.on('messageCreate', async message => {
                     const d = playerData.get(userId);
                     if (d) {
                         const icon = activeEncounter.turnsTaken.has(userId) ? '✅' : '⬜';
-                        const value = `${EMOJIS.HP} ${d.HP}/${d.maxHP} | ${EMOJIS.MP} ${d.MP}/${d.maxMP} | ${EMOJIS.Armor} ${d.Armor}/${d.maxArmor} | ${EMOJIS.Barrier} ${d.Barrier}/${d.maxBarrier}`;
+                        const value = `${EMOJIS.HP} ${d.HP}/${d.maxHP} | ${EMOJIS.MP} ${d.MP}/${d.maxMP} | ${EMOJIS.IP} ${d.IP}/${d.maxIP}\n${EMOJIS.Armor} ${d.Armor}/${d.maxArmor} | ${EMOJIS.Barrier} ${d.Barrier}/${d.maxBarrier}`;
                         embed.addFields({ name: `${icon} ${d.characterName}`, value: value, inline: false });
                     }
                 }
@@ -522,7 +583,7 @@ client.on('messageCreate', async message => {
                 return;
             }
             
-            await message.channel.send('Usage: `$clash <start|end|add|list>`');
+            await message.channel.send('Usage: `$clash <start|join|add|list|end>`');
             await del();
             return;
         }
@@ -551,7 +612,7 @@ client.on('messageCreate', async message => {
                     },
                     { 
                         name: '🛡️ Quick Actions', 
-                        value: '`$defend` - Add max armor+barrier to current\n`$turn` or `$turn @player` - Set armor/barrier to 0\n`$rest` - HP/MP to max, armor/barrier to 0', 
+                        value: '`$defend` - Add max armor+barrier to current\n`$turn` or `$turn @player` - Set armor/barrier to 0\n`$rest` - HP/MP to max, armor/barrier to 0\n`$round` - Clear everyone\'s armor/barrier to 0', 
                         inline: false 
                     },
                     { 
@@ -561,7 +622,7 @@ client.on('messageCreate', async message => {
                     },
                     { 
                         name: '⚔️ Clash', 
-                        value: '`$clash start` - Start encounter\n`$clash add @player1 @player2` - Add players\n`$clash list` - Show all with stats\n`$clash end` - End encounter', 
+                        value: '`$clash start` - Start encounter\n`$clash join` - Join yourself\n`$clash add @players` - Add others\n`$clash list` - Show all (with IP!)\n`$clash end` - End encounter', 
                         inline: false 
                     }
                 )
