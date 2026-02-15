@@ -146,90 +146,6 @@ async function extractCharacterFromSheet(sheetUrl) {
 
 // ========================================
 
-
-// ========================================
-// GOOGLE SHEETS IMPORT FUNCTIONS
-// ========================================
-
-function parseSheetUrl(url) {
-    const spreadsheetMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-    const gidMatch = url.match(/[#&]gid=([0-9]+)/);
-    if (!spreadsheetMatch) return null;
-    return { spreadsheetId: spreadsheetMatch[1], gid: gidMatch ? gidMatch[1] : '0' };
-}
-
-async function fetchSheetData(spreadsheetId, gid) {
-    try {
-        const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Sheet not accessible');
-        const csvText = await response.text();
-        return parseCSV(csvText);
-    } catch (error) {
-        console.error('Error fetching sheet:', error);
-        return null;
-    }
-}
-
-function parseCSV(csvText) {
-    const lines = csvText.split('\n');
-    const data = [];
-    for (const line of lines) {
-        const row = line.split(',').map(cell => cell.trim().replace(/^"|"$/g, ''));
-        data.push(row);
-    }
-    return data;
-}
-
-function cellToIndex(cell) {
-    const match = cell.match(/^([A-Z]+)(\d+)$/);
-    if (!match) return null;
-    const col = match[1];
-    const row = parseInt(match[2]);
-    let colIndex = 0;
-    for (let i = 0; i < col.length; i++) {
-        colIndex = colIndex * 26 + (col.charCodeAt(i) - 65 + 1);
-    }
-    colIndex -= 1;
-    return { row: row - 1, col: colIndex };
-}
-
-function getCellValue(data, cellRef) {
-    const pos = cellToIndex(cellRef);
-    if (!pos || !data[pos.row]) return null;
-    const value = data[pos.row][pos.col];
-    return value || null;
-}
-
-async function extractCharacterFromSheet(sheetUrl) {
-    const parsed = parseSheetUrl(sheetUrl);
-    if (!parsed) return { error: 'Invalid Google Sheets URL' };
-    
-    const data = await fetchSheetData(parsed.spreadsheetId, parsed.gid);
-    if (!data) return { error: 'Could not fetch sheet. Make sure it\'s public (Anyone with link can view)' };
-    
-    try {
-        const maxHP = parseInt(getCellValue(data, 'Q15')) || 100;
-        const maxMP = parseInt(getCellValue(data, 'Q18')) || 50;
-        const maxIP = parseInt(getCellValue(data, 'Q21')) || 100;
-        const maxArmor = parseInt(getCellValue(data, 'AA15')) || 20;
-        const maxBarrier = parseInt(getCellValue(data, 'AA18')) || 15;
-        const force = parseInt(getCellValue(data, 'S26')) || 0;
-        const mind = parseInt(getCellValue(data, 'S28')) || 0;
-        const grace = parseInt(getCellValue(data, 'S30')) || 0;
-        const soul = parseInt(getCellValue(data, 'S32')) || 0;
-        const heart = parseInt(getCellValue(data, 'S34')) || 0;
-        const characterName = getCellValue(data, 'E2') || 'Character';
-        
-        return { characterName, maxHP, maxMP, maxIP, maxArmor, maxBarrier, stats: { force, mind, grace, soul, heart } };
-    } catch (error) {
-        console.error('Error extracting character:', error);
-        return { error: 'Error reading character data from sheet' };
-    }
-}
-
-// ========================================
-
 client.on('ready', () => {
     console.log(`✅ ${client.user.tag}`);
     console.log(`✅ Prefix: ${PREFIX}`);
@@ -244,14 +160,58 @@ client.on('messageCreate', async message => {
     const del = async () => { try { await message.delete(); } catch (e) {} };
     
     try {
-        // $set <name> <hp> <mp> <ip> <armor> <barrier>
+        // $set <n> <hp> <mp> <ip> <armor> <barrier> OR $set <sheet_url>
         if (cmd === 'set') {
             const user = message.mentions.users.first() || message.author;
             const member = await message.guild.members.fetch(user.id);
             const offset = message.mentions.users.first() ? 1 : 0;
             
+            // Check if first arg is a Google Sheets URL
+            const firstArg = args[offset];
+            if (firstArg && firstArg.includes('docs.google.com')) {
+                await message.channel.send('📥 Importing character from Google Sheets...');
+                
+                const result = await extractCharacterFromSheet(firstArg);
+                
+                if (result.error) {
+                    await message.channel.send(`❌ ${result.error}\n\n**Make sure:**\n- Sheet is public (Share → Anyone with link can view)\n- URL is correct`);
+                    await del();
+                    return;
+                }
+                
+                playerData.set(user.id, {
+                    username: member.displayName,
+                    characterName: result.characterName,
+                    HP: result.maxHP, MP: result.maxMP, IP: result.maxIP,
+                    Armor: 0, Barrier: 0,
+                    maxHP: result.maxHP, maxMP: result.maxMP, maxIP: result.maxIP,
+                    maxArmor: result.maxArmor, maxBarrier: result.maxBarrier
+                });
+                
+                await saveCharacterSheet(user.id, playerData.get(user.id));
+                
+                const embed = new EmbedBuilder()
+                    .setColor(0x00FF00)
+                    .setTitle(`✨ ${result.characterName}`)
+                    .setDescription('**Imported from Google Sheets!**')
+                    .addFields(
+                        { name: `${EMOJIS.HP} HP`, value: `${result.maxHP}/${result.maxHP}`, inline: true },
+                        { name: `${EMOJIS.MP} MP`, value: `${result.maxMP}/${result.maxMP}`, inline: true },
+                        { name: `${EMOJIS.IP} IP`, value: `${result.maxIP}/${result.maxIP}`, inline: true },
+                        { name: `${EMOJIS.Armor} Armor`, value: `0/${result.maxArmor}`, inline: true },
+                        { name: `${EMOJIS.Barrier} Barrier`, value: `0/${result.maxBarrier}`, inline: true },
+                        { name: '📊 Base Stats', value: `FORCE: ${result.stats.force} | MIND: ${result.stats.mind} | GRACE: ${result.stats.grace}\nSOUL: ${result.stats.soul} | HEART: ${result.stats.heart}`, inline: false }
+                    )
+                    .setFooter({ text: 'Imported from Google Sheets' });
+                
+                await message.channel.send({ embeds: [embed] });
+                await del();
+                return;
+            }
+            
+            // Manual entry
             if (args.length < 5 + offset) {
-                await message.channel.send('Usage: `$set <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set Gandalf 100 50 100 20 15`');
+                await message.channel.send('Usage: `$set <n> <hp> <mp> <ip> <armor> <barrier>` or `$set <sheet_url>`\nExample: `$set Gandalf 100 50 100 20 15`');
                 await del();
                 return;
             }
