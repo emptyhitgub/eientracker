@@ -69,7 +69,7 @@ async function saveCharacterSheet(userId, data) {
 
 function parseSheetUrl(url) {
     const spreadsheetMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-    const gidMatch = url.match(/[#&]gid=([0-9]+)/);
+    const gidMatch = url.match(/[#&?]gid=([0-9]+)/); // Added ? for mobile URLs
     if (!spreadsheetMatch) return null;
     return { spreadsheetId: spreadsheetMatch[1], gid: gidMatch ? gidMatch[1] : '0' };
 }
@@ -130,11 +130,11 @@ async function extractCharacterFromSheet(sheetUrl) {
         const maxIP = parseInt(getCellValue(data, 'Q21')) || 100;
         const maxArmor = parseInt(getCellValue(data, 'AA15')) || 20;
         const maxBarrier = parseInt(getCellValue(data, 'AA18')) || 15;
-        const force = parseInt(getCellValue(data, 'S26')) || 0;
-        const mind = parseInt(getCellValue(data, 'S28')) || 0;
-        const grace = parseInt(getCellValue(data, 'S30')) || 0;
-        const soul = parseInt(getCellValue(data, 'S32')) || 0;
-        const heart = parseInt(getCellValue(data, 'S34')) || 0;
+        const force = parseInt(getCellValue(data, 'T26')) || parseInt(getCellValue(data, 'S26')) || 0;
+        const mind = parseInt(getCellValue(data, 'T28')) || parseInt(getCellValue(data, 'S28')) || 0;
+        const grace = parseInt(getCellValue(data, 'T30')) || parseInt(getCellValue(data, 'S30')) || 0;
+        const soul = parseInt(getCellValue(data, 'T32')) || parseInt(getCellValue(data, 'S32')) || 0;
+        const heart = parseInt(getCellValue(data, 'T34')) || parseInt(getCellValue(data, 'S34')) || 0;
         const characterName = getCellValue(data, 'E2') || 'Character';
         
         return { characterName, maxHP, maxMP, maxIP, maxArmor, maxBarrier, stats: { force, mind, grace, soul, heart } };
