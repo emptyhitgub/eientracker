@@ -169,12 +169,12 @@ async function extractCharacterFromSheet(sheetUrl) {
         const maxArmor = getValueFromRange(data, ['AA15', 'AB15', 'AA16', 'AB16']) || 20;
         const maxBarrier = getValueFromRange(data, ['AA18', 'AB18', 'AA19', 'AB19']) || 15;
         
-        // Stats - read from their ranges (S:T columns, rows 26-35)
-        const force = getValueFromRange(data, ['T26', 'T27', 'S26', 'S27']) || 0;
-        const mind = getValueFromRange(data, ['T28', 'T29', 'S28', 'S29']) || 0;
-        const grace = getValueFromRange(data, ['T30', 'T31', 'S30', 'S31']) || 0;
-        const soul = getValueFromRange(data, ['T32', 'T33', 'S32', 'S33']) || 0;
-        const heart = getValueFromRange(data, ['T34', 'T35', 'S34', 'S35']) || 0;
+        // Stats - EXACT cells only
+        const force = parseInt(getCellValue(data, 'S26')) || 0;
+        const mind = parseInt(getCellValue(data, 'S28')) || 0;
+        const grace = parseInt(getCellValue(data, 'S30')) || 0;
+        const soul = parseInt(getCellValue(data, 'S32')) || 0;
+        const heart = parseInt(getCellValue(data, 'S34')) || 0;
         
         // Character name
         const characterName = getCellValue(data, 'E2') || getCellValue(data, 'F2') || getCellValue(data, 'E3') || getCellValue(data, 'F3') || 'Character';
