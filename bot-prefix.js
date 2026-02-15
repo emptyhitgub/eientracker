@@ -63,6 +63,173 @@ async function saveCharacterSheet(userId, data) {
     } catch (err) { console.error('Save error:', err); }
 }
 
+// ========================================
+// GOOGLE SHEETS IMPORT FUNCTIONS
+// ========================================
+
+function parseSheetUrl(url) {
+    const spreadsheetMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    const gidMatch = url.match(/[#&]gid=([0-9]+)/);
+    if (!spreadsheetMatch) return null;
+    return { spreadsheetId: spreadsheetMatch[1], gid: gidMatch ? gidMatch[1] : '0' };
+}
+
+async function fetchSheetData(spreadsheetId, gid) {
+    try {
+        const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Sheet not accessible');
+        const csvText = await response.text();
+        return parseCSV(csvText);
+    } catch (error) {
+        console.error('Error fetching sheet:', error);
+        return null;
+    }
+}
+
+function parseCSV(csvText) {
+    const lines = csvText.split('\n');
+    const data = [];
+    for (const line of lines) {
+        const row = line.split(',').map(cell => cell.trim().replace(/^"|"$/g, ''));
+        data.push(row);
+    }
+    return data;
+}
+
+function cellToIndex(cell) {
+    const match = cell.match(/^([A-Z]+)(\d+)$/);
+    if (!match) return null;
+    const col = match[1];
+    const row = parseInt(match[2]);
+    let colIndex = 0;
+    for (let i = 0; i < col.length; i++) {
+        colIndex = colIndex * 26 + (col.charCodeAt(i) - 65 + 1);
+    }
+    colIndex -= 1;
+    return { row: row - 1, col: colIndex };
+}
+
+function getCellValue(data, cellRef) {
+    const pos = cellToIndex(cellRef);
+    if (!pos || !data[pos.row]) return null;
+    const value = data[pos.row][pos.col];
+    return value || null;
+}
+
+async function extractCharacterFromSheet(sheetUrl) {
+    const parsed = parseSheetUrl(sheetUrl);
+    if (!parsed) return { error: 'Invalid Google Sheets URL' };
+    
+    const data = await fetchSheetData(parsed.spreadsheetId, parsed.gid);
+    if (!data) return { error: 'Could not fetch sheet. Make sure it\'s public (Anyone with link can view)' };
+    
+    try {
+        const maxHP = parseInt(getCellValue(data, 'Q15')) || 100;
+        const maxMP = parseInt(getCellValue(data, 'Q18')) || 50;
+        const maxIP = parseInt(getCellValue(data, 'Q21')) || 100;
+        const maxArmor = parseInt(getCellValue(data, 'AA15')) || 20;
+        const maxBarrier = parseInt(getCellValue(data, 'AA18')) || 15;
+        const force = parseInt(getCellValue(data, 'S26')) || 0;
+        const mind = parseInt(getCellValue(data, 'S28')) || 0;
+        const grace = parseInt(getCellValue(data, 'S30')) || 0;
+        const soul = parseInt(getCellValue(data, 'S32')) || 0;
+        const heart = parseInt(getCellValue(data, 'S34')) || 0;
+        const characterName = getCellValue(data, 'E2') || 'Character';
+        
+        return { characterName, maxHP, maxMP, maxIP, maxArmor, maxBarrier, stats: { force, mind, grace, soul, heart } };
+    } catch (error) {
+        console.error('Error extracting character:', error);
+        return { error: 'Error reading character data from sheet' };
+    }
+}
+
+// ========================================
+
+
+// ========================================
+// GOOGLE SHEETS IMPORT FUNCTIONS
+// ========================================
+
+function parseSheetUrl(url) {
+    const spreadsheetMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    const gidMatch = url.match(/[#&]gid=([0-9]+)/);
+    if (!spreadsheetMatch) return null;
+    return { spreadsheetId: spreadsheetMatch[1], gid: gidMatch ? gidMatch[1] : '0' };
+}
+
+async function fetchSheetData(spreadsheetId, gid) {
+    try {
+        const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Sheet not accessible');
+        const csvText = await response.text();
+        return parseCSV(csvText);
+    } catch (error) {
+        console.error('Error fetching sheet:', error);
+        return null;
+    }
+}
+
+function parseCSV(csvText) {
+    const lines = csvText.split('\n');
+    const data = [];
+    for (const line of lines) {
+        const row = line.split(',').map(cell => cell.trim().replace(/^"|"$/g, ''));
+        data.push(row);
+    }
+    return data;
+}
+
+function cellToIndex(cell) {
+    const match = cell.match(/^([A-Z]+)(\d+)$/);
+    if (!match) return null;
+    const col = match[1];
+    const row = parseInt(match[2]);
+    let colIndex = 0;
+    for (let i = 0; i < col.length; i++) {
+        colIndex = colIndex * 26 + (col.charCodeAt(i) - 65 + 1);
+    }
+    colIndex -= 1;
+    return { row: row - 1, col: colIndex };
+}
+
+function getCellValue(data, cellRef) {
+    const pos = cellToIndex(cellRef);
+    if (!pos || !data[pos.row]) return null;
+    const value = data[pos.row][pos.col];
+    return value || null;
+}
+
+async function extractCharacterFromSheet(sheetUrl) {
+    const parsed = parseSheetUrl(sheetUrl);
+    if (!parsed) return { error: 'Invalid Google Sheets URL' };
+    
+    const data = await fetchSheetData(parsed.spreadsheetId, parsed.gid);
+    if (!data) return { error: 'Could not fetch sheet. Make sure it\'s public (Anyone with link can view)' };
+    
+    try {
+        const maxHP = parseInt(getCellValue(data, 'Q15')) || 100;
+        const maxMP = parseInt(getCellValue(data, 'Q18')) || 50;
+        const maxIP = parseInt(getCellValue(data, 'Q21')) || 100;
+        const maxArmor = parseInt(getCellValue(data, 'AA15')) || 20;
+        const maxBarrier = parseInt(getCellValue(data, 'AA18')) || 15;
+        const force = parseInt(getCellValue(data, 'S26')) || 0;
+        const mind = parseInt(getCellValue(data, 'S28')) || 0;
+        const grace = parseInt(getCellValue(data, 'S30')) || 0;
+        const soul = parseInt(getCellValue(data, 'S32')) || 0;
+        const heart = parseInt(getCellValue(data, 'S34')) || 0;
+        const characterName = getCellValue(data, 'E2') || 'Character';
+        
+        return { characterName, maxHP, maxMP, maxIP, maxArmor, maxBarrier, stats: { force, mind, grace, soul, heart } };
+    } catch (error) {
+        console.error('Error extracting character:', error);
+        return { error: 'Error reading character data from sheet' };
+    }
+}
+
+// ========================================
+
 client.on('ready', () => {
     console.log(`✅ ${client.user.tag}`);
     console.log(`✅ Prefix: ${PREFIX}`);
