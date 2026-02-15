@@ -137,6 +137,17 @@ function getCellValue(data, cellRef) {
     return value || null;
 }
 
+// Get first non-empty value from a range of cells
+function getValueFromRange(data, cells) {
+    for (const cell of cells) {
+        const value = getCellValue(data, cell);
+        if (value && !isNaN(parseInt(value))) {
+            return parseInt(value);
+        }
+    }
+    return 0;
+}
+
 async function extractCharacterFromSheet(sheetUrl) {
     const parsed = parseSheetUrl(sheetUrl);
     if (!parsed) return { error: 'Invalid Google Sheets URL' };
@@ -145,17 +156,28 @@ async function extractCharacterFromSheet(sheetUrl) {
     if (!data) return { error: 'Could not fetch sheet. Make sure it\'s public (Anyone with link can view)' };
     
     try {
-        const maxHP = parseInt(getCellValue(data, 'Q15')) || 100;
-        const maxMP = parseInt(getCellValue(data, 'Q18')) || 50;
-        const maxIP = parseInt(getCellValue(data, 'Q21')) || 100;
-        const maxArmor = parseInt(getCellValue(data, 'AA15')) || 20;
-        const maxBarrier = parseInt(getCellValue(data, 'AA18')) || 15;
-        const force = parseInt(getCellValue(data, 'T26')) || parseInt(getCellValue(data, 'S26')) || 0;
-        const mind = parseInt(getCellValue(data, 'T28')) || parseInt(getCellValue(data, 'S28')) || 0;
-        const grace = parseInt(getCellValue(data, 'T30')) || parseInt(getCellValue(data, 'S30')) || 0;
-        const soul = parseInt(getCellValue(data, 'T32')) || parseInt(getCellValue(data, 'S32')) || 0;
-        const heart = parseInt(getCellValue(data, 'T34')) || parseInt(getCellValue(data, 'S34')) || 0;
-        const characterName = getCellValue(data, 'E2') || 'Character';
+        // Read HP, MP from their ranges
+        const maxHP = getValueFromRange(data, ['Q15', 'R15', 'S15', 'T15', 'Q16', 'R16']) || 100;
+        const maxMP = getValueFromRange(data, ['Q18', 'R18', 'S18', 'T18', 'Q19', 'R19']) || 50;
+        
+        // IP = Base (Q21:T22) + Bonus (Q23:T23)
+        const baseIP = getValueFromRange(data, ['Q21', 'R21', 'S21', 'T21', 'Q22', 'R22', 'S22', 'T22']) || 0;
+        const bonusIP = getValueFromRange(data, ['Q23', 'R23', 'S23', 'T23']) || 0;
+        const maxIP = baseIP + bonusIP || 100;
+        
+        // Armor and Barrier
+        const maxArmor = getValueFromRange(data, ['AA15', 'AB15', 'AA16', 'AB16']) || 20;
+        const maxBarrier = getValueFromRange(data, ['AA18', 'AB18', 'AA19', 'AB19']) || 15;
+        
+        // Stats - read from their ranges (S:T columns, rows 26-35)
+        const force = getValueFromRange(data, ['T26', 'T27', 'S26', 'S27']) || 0;
+        const mind = getValueFromRange(data, ['T28', 'T29', 'S28', 'S29']) || 0;
+        const grace = getValueFromRange(data, ['T30', 'T31', 'S30', 'S31']) || 0;
+        const soul = getValueFromRange(data, ['T32', 'T33', 'S32', 'S33']) || 0;
+        const heart = getValueFromRange(data, ['T34', 'T35', 'S34', 'S35']) || 0;
+        
+        // Character name
+        const characterName = getCellValue(data, 'E2') || getCellValue(data, 'F2') || getCellValue(data, 'E3') || getCellValue(data, 'F3') || 'Character';
         
         return { characterName, maxHP, maxMP, maxIP, maxArmor, maxBarrier, stats: { force, mind, grace, soul, heart } };
     } catch (error) {
