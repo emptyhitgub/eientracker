@@ -76,10 +76,30 @@ function parseSheetUrl(url) {
 
 async function fetchSheetData(spreadsheetId, gid) {
     try {
-        const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
-        const response = await fetch(url);
+        // Try method 1: Standard export with gid
+        let url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
+        let response = await fetch(url);
+        
+        // If that fails and gid is 0, try without gid parameter
+        if (!response.ok && gid === '0') {
+            url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
+            response = await fetch(url);
+        }
+        
+        // If still fails, try the pub format
+        if (!response.ok) {
+            url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
+            response = await fetch(url);
+        }
+        
         if (!response.ok) throw new Error('Sheet not accessible');
         const csvText = await response.text();
+        
+        // Check if we got HTML instead of CSV (means auth required)
+        if (csvText.includes('<!DOCTYPE') || csvText.includes('<html')) {
+            throw new Error('Sheet requires authentication');
+        }
+        
         return parseCSV(csvText);
     } catch (error) {
         console.error('Error fetching sheet:', error);
@@ -174,7 +194,7 @@ client.on('messageCreate', async message => {
                 const result = await extractCharacterFromSheet(firstArg);
                 
                 if (result.error) {
-                    await message.channel.send(`❌ ${result.error}\n\n**Make sure:**\n- Sheet is public (Share → Anyone with link can view)\n- URL is correct`);
+                    await message.channel.send(`❌ ${result.error}\n\n**Make sure:**\n- Sheet is public (Share → Anyone with link can view)\n- URL is correct\n\n**📱 Mobile users:** If using mobile link, try getting the link from PC with the specific tab open (will include \`#gid=NUMBERS\`)`);
                     await del();
                     return;
                 }
