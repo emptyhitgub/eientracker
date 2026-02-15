@@ -148,6 +148,24 @@ function getValueFromRange(data, cells) {
     return 0;
 }
 
+// Parse dice notation (e.g., "d10", "force: d8", "MIND d12") and extract the number
+function parseDiceValue(value) {
+    if (!value) return 0;
+    
+    // Convert to string and look for dX pattern
+    const str = String(value).toLowerCase();
+    
+    // Match patterns like "d10", "d8", "force: d10", "MIND d12"
+    const match = str.match(/d(\d+)/);
+    if (match) {
+        return parseInt(match[1]);
+    }
+    
+    // If no dice notation, try to parse as regular number
+    const num = parseInt(str);
+    return isNaN(num) ? 0 : num;
+}
+
 async function extractCharacterFromSheet(sheetUrl) {
     const parsed = parseSheetUrl(sheetUrl);
     if (!parsed) return { error: 'Invalid Google Sheets URL' };
@@ -169,12 +187,12 @@ async function extractCharacterFromSheet(sheetUrl) {
         const maxArmor = getValueFromRange(data, ['AA15', 'AB15', 'AA16', 'AB16']) || 20;
         const maxBarrier = getValueFromRange(data, ['AA18', 'AB18', 'AA19', 'AB19']) || 15;
         
-        // Stats - EXACT cells only
-        const force = parseInt(getCellValue(data, 'S26')) || 0;
-        const mind = parseInt(getCellValue(data, 'S28')) || 0;
-        const grace = parseInt(getCellValue(data, 'S30')) || 0;
-        const soul = parseInt(getCellValue(data, 'S32')) || 0;
-        const heart = parseInt(getCellValue(data, 'S34')) || 0;
+        // Stats - EXACT cells only (parse dice notation like "d10")
+        const force = parseDiceValue(getCellValue(data, 'S26'));
+        const mind = parseDiceValue(getCellValue(data, 'S28'));
+        const grace = parseDiceValue(getCellValue(data, 'S30'));
+        const soul = parseDiceValue(getCellValue(data, 'S32'));
+        const heart = parseDiceValue(getCellValue(data, 'S34'));
         
         // Character name
         const characterName = getCellValue(data, 'E2') || getCellValue(data, 'F2') || getCellValue(data, 'E3') || getCellValue(data, 'F3') || 'Character';
