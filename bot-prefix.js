@@ -332,15 +332,19 @@ client.on('messageCreate', async message => {
             return;
         }
         
-        // $a <d1> <d2> <mod> <gate>
+        // $a <d1> <d2> [mod] [gate] - mod and gate default to 0
         if (cmd === 'a' || cmd === 'attack') {
-            if (args.length < 4) {
-                await message.channel.send('Usage: `$a <d1> <d2> <mod> <gate>`');
+            if (args.length < 2) {
+                await message.channel.send('Usage: `$a <d1> <d2> [mod] [gate]`\nExample: `$a 10 8` or `$a 10 8 5 1`');
                 await del();
                 return;
             }
             
-            const [d1, d2, mod, gate] = [parseInt(args[0]), parseInt(args[1]), parseInt(args[2]), parseInt(args[3])];
+            const d1 = parseInt(args[0]);
+            const d2 = parseInt(args[1]);
+            const mod = args[2] ? parseInt(args[2]) : 0;
+            const gate = args[3] ? parseInt(args[3]) : 0;
+            
             const userId = message.author.id;
             initPlayer(userId, message.member.displayName);
             const data = playerData.get(userId);
@@ -477,6 +481,89 @@ client.on('messageCreate', async message => {
                 .setColor(d.Barrier > old ? 0x00FF00 : 0xFF6B6B)
                 .setTitle(d.characterName)
                 .addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${old} → **${d.Barrier}**/${d.maxBarrier}`, inline: true });
+            
+            await message.channel.send({ embeds: [embed] });
+            await del();
+            return;
+        }
+        
+        // $damage <amount> [a|b|t] [@target] - Apply damage to self or target
+        if (cmd === 'damage' || cmd === 'dmg') {
+            if (!args[0]) {
+                await message.channel.send('Usage: `$damage <amount> [a|b|t] [@target]`\nTypes: a=armor (default), b=barrier, t=true\nExample: `$damage 20` or `$damage 30 b @Player`');
+                await del();
+                return;
+            }
+            
+            const amount = parseInt(args[0]);
+            let type = 'a';
+            let targetUser = message.author;
+            
+            // Parse type (a/b/t)
+            if (args[1] && ['a', 'b', 't'].includes(args[1].toLowerCase())) {
+                type = args[1].toLowerCase();
+            }
+            
+            // Parse target
+            const mentionedUser = message.mentions.users.first();
+            if (mentionedUser) {
+                targetUser = mentionedUser;
+            }
+            
+            const targetMember = await message.guild.members.fetch(targetUser.id);
+            initPlayer(targetUser.id, targetMember.displayName);
+            const d = playerData.get(targetUser.id);
+            
+            const oldHP = d.HP;
+            const oldArmor = d.Armor;
+            const oldBarrier = d.Barrier;
+            
+            let damageBreakdown = [];
+            
+            if (type === 't') {
+                // True damage - directly to HP
+                d.HP = Math.max(0, d.HP - amount);
+                damageBreakdown.push(`${amount} true damage → HP`);
+            } else if (type === 'b') {
+                // Barrier damage
+                const barrierDmg = Math.min(amount, d.Barrier);
+                const overflow = amount - barrierDmg;
+                d.Barrier = Math.max(0, d.Barrier - amount);
+                
+                damageBreakdown.push(`${barrierDmg} → Barrier`);
+                if (overflow > 0) {
+                    d.HP = Math.max(0, d.HP - overflow);
+                    damageBreakdown.push(`${overflow} overflow → HP`);
+                }
+            } else {
+                // Armor damage (default)
+                const armorDmg = Math.min(amount, d.Armor);
+                const overflow = amount - armorDmg;
+                d.Armor = Math.max(0, d.Armor - amount);
+                
+                damageBreakdown.push(`${armorDmg} → Armor`);
+                if (overflow > 0) {
+                    d.HP = Math.max(0, d.HP - overflow);
+                    damageBreakdown.push(`${overflow} overflow → HP`);
+                }
+            }
+            
+            const typeLabel = type === 't' ? 'True' : type === 'b' ? 'Barrier' : 'Armor';
+            
+            const embed = new EmbedBuilder()
+                .setColor(0xFF0000)
+                .setTitle(`💥 ${d.characterName} Takes Damage`)
+                .setDescription(`**${amount} ${typeLabel} Damage**`)
+                .addFields(
+                    { name: 'Breakdown', value: damageBreakdown.join('\n'), inline: false },
+                    { name: `${EMOJIS.HP} HP`, value: `${oldHP} → **${d.HP}**/${d.maxHP}`, inline: true }
+                );
+            
+            if (type === 'a') {
+                embed.addFields({ name: `${EMOJIS.Armor} Armor`, value: `${oldArmor} → **${d.Armor}**/${d.maxArmor}`, inline: true });
+            } else if (type === 'b') {
+                embed.addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${oldBarrier} → **${d.Barrier}**/${d.maxBarrier}`, inline: true });
+            }
             
             await message.channel.send({ embeds: [embed] });
             await del();
@@ -784,12 +871,17 @@ client.on('messageCreate', async message => {
                 .addFields(
                     { 
                         name: '🎮 Setup', 
-                        value: '`$set <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set Gandalf 100 50 100 20 15`\n\n`$view` or `$view @player`', 
+                        value: '**Import from Google Sheets:**\n`$set <sheet_url>`\nExample: `$set https://docs.google.com/spreadsheets/d/YOUR_ID/edit#gid=0`\n\n**Manual Setup:**\n`$set <n> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set Gandalf 100 50 100 20 15`\n\n**View:**\n`$view` or `$view @player`', 
                         inline: false 
                     },
                     { 
                         name: '⚔️ Attack', 
-                        value: '`$a <dice1> <dice2> <modifier> <gate>`\nExample: `$a 10 8 5 1`\n(Roll d10+d8, +5 modifier, gate ≤1)', 
+                        value: '`$a <dice1> <dice2> [modifier] [gate]`\nExample: `$a 10 8` (mod and gate default to 0)\nExample: `$a 10 8 5 1` (with modifier +5, gate ≤1)', 
+                        inline: false 
+                    },
+                    { 
+                        name: '💥 Damage', 
+                        value: '`$damage <amount> [type] [@target]`\nExample: `$damage 20` (20 armor damage to self)\nExample: `$damage 30 b @Tank` (30 barrier damage to Tank)\nExample: `$damage 15 t` (15 true damage to self)\n\n**Types:** `a`=armor (default), `b`=barrier, `t`=true', 
                         inline: false 
                     },
                     { 
@@ -813,11 +905,9 @@ client.on('messageCreate', async message => {
                         inline: false 
                     }
                 )
-                .setFooter({ text: 'Tip: HP/MP can go above max | Use + or - for amounts' });
+                .setFooter({ text: 'Tip: Import from Google Sheets! | HP/MP can go above max' });
             
             await message.channel.send({ embeds: [embed] });
-            await del();
-            return;
         }
         
     } catch (err) {
