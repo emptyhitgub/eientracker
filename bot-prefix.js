@@ -25,14 +25,11 @@ const activeEncounter = { active: false, combatants: [], turnsTaken: new Set() }
 
 const EMOJIS = { HP: '❤️', MP: '💧', IP: '💰', Armor: '🛡️', Barrier: '✨' };
 
-function initPlayer(userId, username) {
+function requireCharacter(userId, username) {
     if (!playerData.has(userId)) {
-        playerData.set(userId, {
-            username, characterName: username,
-            HP: 100, MP: 50, IP: 100, Armor: 0, Barrier: 0,
-            maxHP: 100, maxMP: 50, maxIP: 100, maxArmor: 20, maxBarrier: 15
-        });
+        return false; // Character not set
     }
+    return true;
 }
 
 async function loadPlayerFromDB(userId) {
@@ -313,7 +310,13 @@ client.on('messageCreate', async message => {
         if (cmd === 'view') {
             const user = message.mentions.users.first() || message.author;
             const member = await message.guild.members.fetch(user.id);
-            initPlayer(user.id, member.displayName);
+            
+            if (!requireCharacter(user.id, member.displayName)) {
+                await message.channel.send(`❌ ${member.displayName} has no character set.\n\nUse:\n\`$set <sheet_url>\` to import from Google Sheets\nOR\n\`$set <name> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+                await del();
+                return;
+            }
+            
             const d = playerData.get(user.id);
             
             const embed = new EmbedBuilder()
@@ -340,13 +343,19 @@ client.on('messageCreate', async message => {
                 return;
             }
             
+            const userId = message.author.id;
+            
+            if (!requireCharacter(userId, message.member.displayName)) {
+                await message.channel.send(`❌ You have no character set.\n\nUse:\n\`$set <sheet_url>\` to import from Google Sheets\nOR\n\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+                await del();
+                return;
+            }
+            
             const d1 = parseInt(args[0]);
             const d2 = parseInt(args[1]);
             const mod = args[2] ? parseInt(args[2]) : 0;
             const gate = args[3] ? parseInt(args[3]) : 0;
             
-            const userId = message.author.id;
-            initPlayer(userId, message.member.displayName);
             const data = playerData.get(userId);
             
             const r1 = Math.floor(Math.random() * d1) + 1;
@@ -381,7 +390,18 @@ client.on('messageCreate', async message => {
         if (cmd === 'hp') {
             if (!args[0]) { await message.channel.send('Usage: `$hp <±amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
-            initPlayer(userId, message.member.displayName);
+            
+            if (!requireCharacter(userId, message.member.displayName)) {
+                await message.channel.send(`❌ You have no character set.
+
+Use:
+\`$set <sheet_url>\` to import from Google Sheets
+OR
+\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+                await del();
+                return;
+            }
+            
             const d = playerData.get(userId);
             const old = d.HP;
             
@@ -403,7 +423,18 @@ client.on('messageCreate', async message => {
         if (cmd === 'mp') {
             if (!args[0]) { await message.channel.send('Usage: `$mp <±amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
-            initPlayer(userId, message.member.displayName);
+            
+            if (!requireCharacter(userId, message.member.displayName)) {
+                await message.channel.send(`❌ You have no character set.
+
+Use:
+\`$set <sheet_url>\` to import from Google Sheets
+OR
+\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+                await del();
+                return;
+            }
+            
             const d = playerData.get(userId);
             const old = d.MP;
             
@@ -425,7 +456,18 @@ client.on('messageCreate', async message => {
         if (cmd === 'ip') {
             if (!args[0]) { await message.channel.send('Usage: `$ip <±amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
-            initPlayer(userId, message.member.displayName);
+            
+            if (!requireCharacter(userId, message.member.displayName)) {
+                await message.channel.send(`❌ You have no character set.
+
+Use:
+\`$set <sheet_url>\` to import from Google Sheets
+OR
+\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+                await del();
+                return;
+            }
+            
             const d = playerData.get(userId);
             const old = d.IP;
             
@@ -447,7 +489,18 @@ client.on('messageCreate', async message => {
         if (cmd === 'armor') {
             if (!args[0]) { await message.channel.send('Usage: `$armor <amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
-            initPlayer(userId, message.member.displayName);
+            
+            if (!requireCharacter(userId, message.member.displayName)) {
+                await message.channel.send(`❌ You have no character set.
+
+Use:
+\`$set <sheet_url>\` to import from Google Sheets
+OR
+\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+                await del();
+                return;
+            }
+            
             const d = playerData.get(userId);
             const old = d.Armor;
             
@@ -469,7 +522,18 @@ client.on('messageCreate', async message => {
         if (cmd === 'barrier') {
             if (!args[0]) { await message.channel.send('Usage: `$barrier <amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
-            initPlayer(userId, message.member.displayName);
+            
+            if (!requireCharacter(userId, message.member.displayName)) {
+                await message.channel.send(`❌ You have no character set.
+
+Use:
+\`$set <sheet_url>\` to import from Google Sheets
+OR
+\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+                await del();
+                return;
+            }
+            
             const d = playerData.get(userId);
             const old = d.Barrier;
             
@@ -511,7 +575,13 @@ client.on('messageCreate', async message => {
             }
             
             const targetMember = await message.guild.members.fetch(targetUser.id);
-            initPlayer(targetUser.id, targetMember.displayName);
+            
+            if (!requireCharacter(targetUser.id, targetMember.displayName)) {
+                await message.channel.send(`❌ ${targetMember.displayName} has no character set.\n\nUse:\n\`$set <sheet_url>\` to import from Google Sheets\nOR\n\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+                await del();
+                return;
+            }
+            
             const d = playerData.get(targetUser.id);
             
             const oldHP = d.HP;
@@ -573,7 +643,18 @@ client.on('messageCreate', async message => {
         // $defend
         if (cmd === 'defend') {
             const userId = message.author.id;
-            initPlayer(userId, message.member.displayName);
+            
+            if (!requireCharacter(userId, message.member.displayName)) {
+                await message.channel.send(`❌ You have no character set.
+
+Use:
+\`$set <sheet_url>\` to import from Google Sheets
+OR
+\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+                await del();
+                return;
+            }
+            
             const d = playerData.get(userId);
             const oldA = d.Armor, oldB = d.Barrier;
             d.Armor += d.maxArmor;
@@ -597,7 +678,17 @@ client.on('messageCreate', async message => {
         if (cmd === 'turn') {
             const user = message.mentions.users.first() || message.author;
             const member = await message.guild.members.fetch(user.id);
-            initPlayer(user.id, member.displayName);
+            
+            if (!requireCharacter(user.id, member.displayName)) {
+                await message.channel.send(`❌ ${member.displayName} has no character set.
+
+Use:
+\`$set <sheet_url>\` to import from Google Sheets
+OR
+\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+                await del();
+                return;
+            }
             const d = playerData.get(user.id);
             d.Armor = 0;
             d.Barrier = 0;
@@ -619,7 +710,18 @@ client.on('messageCreate', async message => {
         // $rest
         if (cmd === 'rest') {
             const userId = message.author.id;
-            initPlayer(userId, message.member.displayName);
+            
+            if (!requireCharacter(userId, message.member.displayName)) {
+                await message.channel.send(`❌ You have no character set.
+
+Use:
+\`$set <sheet_url>\` to import from Google Sheets
+OR
+\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+                await del();
+                return;
+            }
+            
             const d = playerData.get(userId);
             d.HP = d.maxHP;
             d.MP = d.maxMP;
@@ -796,8 +898,10 @@ client.on('messageCreate', async message => {
                 const dbData = await loadPlayerFromDB(userId);
                 if (dbData) {
                     playerData.set(userId, dbData);
-                } else {
-                    initPlayer(userId, message.member.displayName);
+                } else if (!requireCharacter(userId, message.member.displayName)) {
+                    await message.channel.send(`❌ You have no character set.\n\nUse:\n\`$set <sheet_url>\` to import from Google Sheets\nOR\n\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+                    await del();
+                    return;
                 }
                 
                 activeEncounter.combatants.push(userId);
@@ -815,21 +919,31 @@ client.on('messageCreate', async message => {
                 if (mentioned.size === 0) { await message.channel.send('❌ Mention players: `$clash add @player`'); await del(); return; }
                 
                 let added = 0;
+                let skipped = [];
                 for (const [userId] of mentioned) {
                     if (!activeEncounter.combatants.includes(userId)) {
                         const dbData = await loadPlayerFromDB(userId);
                         if (dbData) {
                             playerData.set(userId, dbData);
+                            activeEncounter.combatants.push(userId);
+                            added++;
                         } else {
                             const member = await message.guild.members.fetch(userId);
-                            initPlayer(userId, member.displayName);
+                            if (requireCharacter(userId, member.displayName)) {
+                                activeEncounter.combatants.push(userId);
+                                added++;
+                            } else {
+                                skipped.push(member.displayName);
+                            }
                         }
-                        activeEncounter.combatants.push(userId);
-                        added++;
                     }
                 }
                 
-                await message.channel.send(`✅ Added ${added} to clash!`);
+                let msg = `✅ Added ${added} to clash!`;
+                if (skipped.length > 0) {
+                    msg += `\n⚠️ Skipped (no character): ${skipped.join(', ')}`;
+                }
+                await message.channel.send(msg);
                 await del();
                 return;
             }
@@ -929,7 +1043,12 @@ client.on('interactionCreate', async interaction => {
         
         const userId = interaction.user.id;
         const member = interaction.member;
-        initPlayer(userId, member.displayName);
+        
+        if (!requireCharacter(userId, member.displayName)) {
+            await interaction.reply({ content: `❌ You have no character set.\n\nUse:\n\`$set <sheet_url>\` to import from Google Sheets\nOR\n\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`, ephemeral: true });
+            return;
+        }
+        
         const d = playerData.get(userId);
         
         const oldA = d.Armor, oldB = d.Barrier, oldHP = d.HP;
