@@ -21,15 +21,19 @@ if (useDatabase) {
 }
 
 const playerData = new Map();
-const activeEncounter = { active: false, combatants: [], turnsTaken: new Set() };
+const activeEncounter = { active: false, combatants: [], turnsTaken: new Set(), overdrive: 0 };
 
-const EMOJIS = { HP: '❤️', MP: '💧', IP: '💰', Armor: '🛡️', Barrier: '✨' };
+const EMOJIS = { HP: '❤️', MP: '💧', IP: '💰', Armor: '🛡️', Barrier: '✨', Overdrive: '⚡' };
+const MAX_OVERDRIVE = 6;
 
-function requireCharacter(userId, username) {
+function initPlayer(userId, username) {
     if (!playerData.has(userId)) {
-        return false; // Character not set
+        playerData.set(userId, {
+            username, characterName: username,
+            HP: 100, MP: 50, IP: 100, Armor: 0, Barrier: 0,
+            maxHP: 100, maxMP: 50, maxIP: 100, maxArmor: 20, maxBarrier: 15
+        });
     }
-    return true;
 }
 
 async function loadPlayerFromDB(userId) {
@@ -66,24 +70,21 @@ async function saveCharacterSheet(userId, data) {
 
 function parseSheetUrl(url) {
     const spreadsheetMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-    const gidMatch = url.match(/[#&?]gid=([0-9]+)/); // Added ? for mobile URLs
+    const gidMatch = url.match(/[#&?]gid=([0-9]+)/);
     if (!spreadsheetMatch) return null;
     return { spreadsheetId: spreadsheetMatch[1], gid: gidMatch ? gidMatch[1] : '0' };
 }
 
 async function fetchSheetData(spreadsheetId, gid) {
     try {
-        // Try method 1: Standard export with gid
         let url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
         let response = await fetch(url);
         
-        // If that fails and gid is 0, try without gid parameter
         if (!response.ok && gid === '0') {
             url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
             response = await fetch(url);
         }
         
-        // If still fails, try the pub format
         if (!response.ok) {
             url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
             response = await fetch(url);
@@ -92,7 +93,6 @@ async function fetchSheetData(spreadsheetId, gid) {
         if (!response.ok) throw new Error('Sheet not accessible');
         const csvText = await response.text();
         
-        // Check if we got HTML instead of CSV (means auth required)
         if (csvText.includes('<!DOCTYPE') || csvText.includes('<html')) {
             throw new Error('Sheet requires authentication');
         }
@@ -134,7 +134,6 @@ function getCellValue(data, cellRef) {
     return value || null;
 }
 
-// Get first non-empty value from a range of cells
 function getValueFromRange(data, cells) {
     for (const cell of cells) {
         const value = getCellValue(data, cell);
@@ -145,20 +144,11 @@ function getValueFromRange(data, cells) {
     return 0;
 }
 
-// Parse dice notation (e.g., "d10", "force: d8", "MIND d12") and extract the number
 function parseDiceValue(value) {
     if (!value) return 0;
-    
-    // Convert to string and look for dX pattern
     const str = String(value).toLowerCase();
-    
-    // Match patterns like "d10", "d8", "force: d10", "MIND d12"
     const match = str.match(/d(\d+)/);
-    if (match) {
-        return parseInt(match[1]);
-    }
-    
-    // If no dice notation, try to parse as regular number
+    if (match) return parseInt(match[1]);
     const num = parseInt(str);
     return isNaN(num) ? 0 : num;
 }
@@ -171,27 +161,22 @@ async function extractCharacterFromSheet(sheetUrl) {
     if (!data) return { error: 'Could not fetch sheet. Make sure it\'s public (Anyone with link can view)' };
     
     try {
-        // Read HP, MP from their ranges
         const maxHP = getValueFromRange(data, ['Q15', 'R15', 'S15', 'T15', 'Q16', 'R16']) || 100;
         const maxMP = getValueFromRange(data, ['Q18', 'R18', 'S18', 'T18', 'Q19', 'R19']) || 50;
         
-        // IP = Base (Q21:T22) + Bonus (Q23:T23)
         const baseIP = getValueFromRange(data, ['Q21', 'R21', 'S21', 'T21', 'Q22', 'R22', 'S22', 'T22']) || 0;
         const bonusIP = getValueFromRange(data, ['Q23', 'R23', 'S23', 'T23']) || 0;
         const maxIP = baseIP + bonusIP || 100;
         
-        // Armor and Barrier
         const maxArmor = getValueFromRange(data, ['AA15', 'AB15', 'AA16', 'AB16']) || 20;
         const maxBarrier = getValueFromRange(data, ['AA18', 'AB18', 'AA19', 'AB19']) || 15;
         
-        // Stats - EXACT cells only (parse dice notation like "d10")
         const force = parseDiceValue(getCellValue(data, 'S26'));
         const mind = parseDiceValue(getCellValue(data, 'S28'));
         const grace = parseDiceValue(getCellValue(data, 'S30'));
         const soul = parseDiceValue(getCellValue(data, 'S32'));
         const heart = parseDiceValue(getCellValue(data, 'S34'));
         
-        // Character name
         const characterName = getCellValue(data, 'E2') || getCellValue(data, 'F2') || getCellValue(data, 'E3') || getCellValue(data, 'F3') || 'Character';
         
         return { characterName, maxHP, maxMP, maxIP, maxArmor, maxBarrier, stats: { force, mind, grace, soul, heart } };
@@ -199,6 +184,56 @@ async function extractCharacterFromSheet(sheetUrl) {
         console.error('Error extracting character:', error);
         return { error: 'Error reading character data from sheet' };
     }
+}
+
+// ========================================
+// DAMAGE CASCADE HELPER
+// Applies damage through Armor → HP (or Barrier → HP, or true damage)
+// Returns a description of what happened for embed display
+// ========================================
+
+function applyDamageCascade(d, dmg, dmgType) {
+    const oldArmor = d.Armor, oldBarrier = d.Barrier, oldHP = d.HP;
+    const lines = [];
+
+    if (dmgType === 'armor') {
+        if (d.Armor > 0) {
+            const absorbed = Math.min(d.Armor, dmg);
+            const overflow = dmg - absorbed;
+            d.Armor = Math.max(0, d.Armor - dmg);
+            lines.push(`${EMOJIS.Armor} Armor: **${oldArmor}** → **${d.Armor}** (absorbed ${absorbed})`);
+            if (overflow > 0) {
+                d.HP = Math.max(0, d.HP - overflow);
+                lines.push(`${EMOJIS.HP} HP overflow: **${oldHP}** → **${d.HP}** (−${overflow})`);
+            }
+        } else {
+            d.HP = Math.max(0, d.HP - dmg);
+            lines.push(`${EMOJIS.Armor} No Armor — hit HP directly`);
+            lines.push(`${EMOJIS.HP} HP: **${oldHP}** → **${d.HP}** (−${dmg})`);
+        }
+    } else if (dmgType === 'barrier') {
+        if (d.Barrier > 0) {
+            const absorbed = Math.min(d.Barrier, dmg);
+            const overflow = dmg - absorbed;
+            d.Barrier = Math.max(0, d.Barrier - dmg);
+            lines.push(`${EMOJIS.Barrier} Barrier: **${oldBarrier}** → **${d.Barrier}** (absorbed ${absorbed})`);
+            if (overflow > 0) {
+                d.HP = Math.max(0, d.HP - overflow);
+                lines.push(`${EMOJIS.HP} HP overflow: **${oldHP}** → **${d.HP}** (−${overflow})`);
+            }
+        } else {
+            d.HP = Math.max(0, d.HP - dmg);
+            lines.push(`${EMOJIS.Barrier} No Barrier — hit HP directly`);
+            lines.push(`${EMOJIS.HP} HP: **${oldHP}** → **${d.HP}** (−${dmg})`);
+        }
+    } else {
+        // True damage — bypasses everything
+        d.HP = Math.max(0, d.HP - dmg);
+        lines.push(`💀 True damage bypasses defenses`);
+        lines.push(`${EMOJIS.HP} HP: **${oldHP}** → **${d.HP}** (−${dmg})`);
+    }
+
+    return lines;
 }
 
 // ========================================
@@ -217,13 +252,12 @@ client.on('messageCreate', async message => {
     const del = async () => { try { await message.delete(); } catch (e) {} };
     
     try {
-        // $set <n> <hp> <mp> <ip> <armor> <barrier> OR $set <sheet_url>
+        // $set
         if (cmd === 'set') {
             const user = message.mentions.users.first() || message.author;
             const member = await message.guild.members.fetch(user.id);
             const offset = message.mentions.users.first() ? 1 : 0;
             
-            // Check if first arg is a Google Sheets URL
             const firstArg = args[offset];
             if (firstArg && firstArg.includes('docs.google.com')) {
                 await message.channel.send('📥 Importing character from Google Sheets...');
@@ -231,7 +265,7 @@ client.on('messageCreate', async message => {
                 const result = await extractCharacterFromSheet(firstArg);
                 
                 if (result.error) {
-                    await message.channel.send(`❌ ${result.error}\n\n**Make sure:**\n- Sheet is public (Share → Anyone with link can view)\n- URL is correct\n\n**📱 Mobile users:** If using mobile link, try getting the link from PC with the specific tab open (will include \`#gid=NUMBERS\`)`);
+                    await message.channel.send(`❌ ${result.error}\n\n**Make sure:**\n- Sheet is public (Share → Anyone with link can view)\n- URL is correct`);
                     await del();
                     return;
                 }
@@ -266,7 +300,6 @@ client.on('messageCreate', async message => {
                 return;
             }
             
-            // Manual entry
             if (args.length < 5 + offset) {
                 await message.channel.send('Usage: `$set <n> <hp> <mp> <ip> <armor> <barrier>` or `$set <sheet_url>`\nExample: `$set Gandalf 100 50 100 20 15`');
                 await del();
@@ -310,13 +343,13 @@ client.on('messageCreate', async message => {
         if (cmd === 'view') {
             const user = message.mentions.users.first() || message.author;
             const member = await message.guild.members.fetch(user.id);
-            
-            if (!requireCharacter(user.id, member.displayName)) {
-                await message.channel.send(`❌ ${member.displayName} has no character set.\n\nUse:\n\`$set <sheet_url>\` to import from Google Sheets\nOR\n\`$set <name> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
+
+            if (!playerData.has(user.id)) {
+                await message.channel.send(`❌ No character set for **${member.displayName}**. Use \`$set\` first.`);
                 await del();
                 return;
             }
-            
+
             const d = playerData.get(user.id);
             
             const embed = new EmbedBuilder()
@@ -334,28 +367,63 @@ client.on('messageCreate', async message => {
             await del();
             return;
         }
+
+        // ========================================
+        // $dmg <amount> [a|b|t] [@target]
+        // Applies damage through the cascade: Armor/Barrier absorbs, overflow hits HP
+        // ========================================
+        if (cmd === 'dmg') {
+            if (!args[0] || isNaN(parseInt(args[0]))) {
+                await message.channel.send('Usage: `$dmg <amount> [a|b|t] [@target]`\n`a`=armor (default), `b`=barrier, `t`=true\nExample: `$dmg 20 a` or `$dmg 15 b @player`');
+                await del();
+                return;
+            }
+
+            const dmg = parseInt(args[0]);
+            const user = message.mentions.users.first() || message.author;
+            const member = await message.guild.members.fetch(user.id);
+
+            // Parse damage type — check args[1] if it's a type flag (not a mention)
+            let dmgType = 'armor';
+            if (args[1] && !args[1].startsWith('<@')) {
+                const flag = args[1].toLowerCase();
+                if (flag === 'b') dmgType = 'barrier';
+                else if (flag === 't') dmgType = 'true';
+            }
+
+            if (!playerData.has(user.id)) {
+                await message.channel.send(`❌ No character set for **${member.displayName}**. Use \`$set\` first.`);
+                await del();
+                return;
+            }
+
+            const d = playerData.get(user.id);
+            const cascadeLines = applyDamageCascade(d, dmg, dmgType);
+
+            const typeLabel = dmgType === 'armor' ? 'Armor' : dmgType === 'barrier' ? 'Barrier' : 'True';
+            const embed = new EmbedBuilder()
+                .setColor(0xFF6B6B)
+                .setTitle(`💔 ${d.characterName} — ${dmg} ${typeLabel} Damage`)
+                .setDescription(cascadeLines.join('\n'));
+
+            if (d.HP === 0) embed.setFooter({ text: '💀 HP reached 0!' });
+
+            await message.channel.send({ embeds: [embed] });
+            await del();
+            return;
+        }
         
-        // $a <d1> <d2> [mod] [gate] - mod and gate default to 0
+        // $a <d1> <d2> <mod> <gate>
         if (cmd === 'a' || cmd === 'attack') {
-            if (args.length < 2) {
-                await message.channel.send('Usage: `$a <d1> <d2> [mod] [gate]`\nExample: `$a 10 8` or `$a 10 8 5 1`');
+            if (args.length < 4) {
+                await message.channel.send('Usage: `$a <d1> <d2> <mod> <gate>`');
                 await del();
                 return;
             }
             
+            const [d1, d2, mod, gate] = [parseInt(args[0]), parseInt(args[1]), parseInt(args[2]), parseInt(args[3])];
             const userId = message.author.id;
-            
-            if (!requireCharacter(userId, message.member.displayName)) {
-                await message.channel.send(`❌ You have no character set.\n\nUse:\n\`$set <sheet_url>\` to import from Google Sheets\nOR\n\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
-                await del();
-                return;
-            }
-            
-            const d1 = parseInt(args[0]);
-            const d2 = parseInt(args[1]);
-            const mod = args[2] ? parseInt(args[2]) : 0;
-            const gate = args[3] ? parseInt(args[3]) : 0;
-            
+            initPlayer(userId, message.member.displayName);
             const data = playerData.get(userId);
             
             const r1 = Math.floor(Math.random() * d1) + 1;
@@ -385,23 +453,11 @@ client.on('messageCreate', async message => {
             return;
         }
         
-        
-        // $hp <±amount|full|zero>
+        // $hp
         if (cmd === 'hp') {
             if (!args[0]) { await message.channel.send('Usage: `$hp <±amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
-            
-            if (!requireCharacter(userId, message.member.displayName)) {
-                await message.channel.send(`❌ You have no character set.
-
-Use:
-\`$set <sheet_url>\` to import from Google Sheets
-OR
-\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
-                await del();
-                return;
-            }
-            
+            initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
             const old = d.HP;
             
@@ -423,18 +479,7 @@ OR
         if (cmd === 'mp') {
             if (!args[0]) { await message.channel.send('Usage: `$mp <±amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
-            
-            if (!requireCharacter(userId, message.member.displayName)) {
-                await message.channel.send(`❌ You have no character set.
-
-Use:
-\`$set <sheet_url>\` to import from Google Sheets
-OR
-\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
-                await del();
-                return;
-            }
-            
+            initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
             const old = d.MP;
             
@@ -456,18 +501,7 @@ OR
         if (cmd === 'ip') {
             if (!args[0]) { await message.channel.send('Usage: `$ip <±amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
-            
-            if (!requireCharacter(userId, message.member.displayName)) {
-                await message.channel.send(`❌ You have no character set.
-
-Use:
-\`$set <sheet_url>\` to import from Google Sheets
-OR
-\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
-                await del();
-                return;
-            }
-            
+            initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
             const old = d.IP;
             
@@ -489,18 +523,7 @@ OR
         if (cmd === 'armor') {
             if (!args[0]) { await message.channel.send('Usage: `$armor <amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
-            
-            if (!requireCharacter(userId, message.member.displayName)) {
-                await message.channel.send(`❌ You have no character set.
-
-Use:
-\`$set <sheet_url>\` to import from Google Sheets
-OR
-\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
-                await del();
-                return;
-            }
-            
+            initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
             const old = d.Armor;
             
@@ -522,18 +545,7 @@ OR
         if (cmd === 'barrier') {
             if (!args[0]) { await message.channel.send('Usage: `$barrier <amount|full|zero>`'); await del(); return; }
             const userId = message.author.id;
-            
-            if (!requireCharacter(userId, message.member.displayName)) {
-                await message.channel.send(`❌ You have no character set.
-
-Use:
-\`$set <sheet_url>\` to import from Google Sheets
-OR
-\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
-                await del();
-                return;
-            }
-            
+            initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
             const old = d.Barrier;
             
@@ -550,91 +562,54 @@ OR
             await del();
             return;
         }
-        
-        // $damage <amount> [a|b|t] [@target] - Apply damage to self or target
-        if (cmd === 'damage' || cmd === 'dmg') {
+
+        // ========================================
+        // $overdrive [±amount|zero]
+        // Tracks the shared Overdrive pool (capped at MAX_OVERDRIVE)
+        // With no args, shows current value
+        // ========================================
+        if (cmd === 'overdrive' || cmd === 'od') {
+            if (!activeEncounter.active) {
+                await message.channel.send('❌ No active clash. Use `$clash start` first.');
+                await del();
+                return;
+            }
+
+            const old = activeEncounter.overdrive;
+
             if (!args[0]) {
-                await message.channel.send('Usage: `$damage <amount> [a|b|t] [@target]`\nTypes: a=armor (default), b=barrier, t=true\nExample: `$damage 20` or `$damage 30 b @Player`');
+                // Just display
+                const bar = buildOverdriveBar(old);
+                const embed = new EmbedBuilder()
+                    .setColor(0xFFAA00)
+                    .setTitle(`${EMOJIS.Overdrive} Overdrive`)
+                    .setDescription(`${bar}\n**${old} / ${MAX_OVERDRIVE}**`);
+                await message.channel.send({ embeds: [embed] });
                 await del();
                 return;
             }
-            
-            const amount = parseInt(args[0]);
-            let type = 'a';
-            let targetUser = message.author;
-            
-            // Parse type (a/b/t)
-            if (args[1] && ['a', 'b', 't'].includes(args[1].toLowerCase())) {
-                type = args[1].toLowerCase();
-            }
-            
-            // Parse target
-            const mentionedUser = message.mentions.users.first();
-            if (mentionedUser) {
-                targetUser = mentionedUser;
-            }
-            
-            const targetMember = await message.guild.members.fetch(targetUser.id);
-            
-            if (!requireCharacter(targetUser.id, targetMember.displayName)) {
-                await message.channel.send(`❌ ${targetMember.displayName} has no character set.\n\nUse:\n\`$set <sheet_url>\` to import from Google Sheets\nOR\n\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
-                await del();
-                return;
-            }
-            
-            const d = playerData.get(targetUser.id);
-            
-            const oldHP = d.HP;
-            const oldArmor = d.Armor;
-            const oldBarrier = d.Barrier;
-            
-            let damageBreakdown = [];
-            
-            if (type === 't') {
-                // True damage - directly to HP
-                d.HP = Math.max(0, d.HP - amount);
-                damageBreakdown.push(`${amount} true damage → HP`);
-            } else if (type === 'b') {
-                // Barrier damage
-                const barrierDmg = Math.min(amount, d.Barrier);
-                const overflow = amount - barrierDmg;
-                d.Barrier = Math.max(0, d.Barrier - amount);
-                
-                damageBreakdown.push(`${barrierDmg} → Barrier`);
-                if (overflow > 0) {
-                    d.HP = Math.max(0, d.HP - overflow);
-                    damageBreakdown.push(`${overflow} overflow → HP`);
-                }
+
+            if (args[0] === 'zero') {
+                activeEncounter.overdrive = 0;
             } else {
-                // Armor damage (default)
-                const armorDmg = Math.min(amount, d.Armor);
-                const overflow = amount - armorDmg;
-                d.Armor = Math.max(0, d.Armor - amount);
-                
-                damageBreakdown.push(`${armorDmg} → Armor`);
-                if (overflow > 0) {
-                    d.HP = Math.max(0, d.HP - overflow);
-                    damageBreakdown.push(`${overflow} overflow → HP`);
+                const delta = parseInt(args[0]);
+                if (isNaN(delta)) {
+                    await message.channel.send('Usage: `$overdrive [±amount|zero]`\nExample: `$overdrive +1`, `$overdrive -2`, `$overdrive zero`');
+                    await del();
+                    return;
                 }
+                activeEncounter.overdrive = Math.max(0, Math.min(MAX_OVERDRIVE, old + delta));
             }
-            
-            const typeLabel = type === 't' ? 'True' : type === 'b' ? 'Barrier' : 'Armor';
-            
+
+            const newVal = activeEncounter.overdrive;
+            const bar = buildOverdriveBar(newVal);
+            const direction = newVal > old ? '📈' : newVal < old ? '📉' : '➡️';
             const embed = new EmbedBuilder()
-                .setColor(0xFF0000)
-                .setTitle(`💥 ${d.characterName} Takes Damage`)
-                .setDescription(`**${amount} ${typeLabel} Damage**`)
-                .addFields(
-                    { name: 'Breakdown', value: damageBreakdown.join('\n'), inline: false },
-                    { name: `${EMOJIS.HP} HP`, value: `${oldHP} → **${d.HP}**/${d.maxHP}`, inline: true }
-                );
-            
-            if (type === 'a') {
-                embed.addFields({ name: `${EMOJIS.Armor} Armor`, value: `${oldArmor} → **${d.Armor}**/${d.maxArmor}`, inline: true });
-            } else if (type === 'b') {
-                embed.addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${oldBarrier} → **${d.Barrier}**/${d.maxBarrier}`, inline: true });
-            }
-            
+                .setColor(newVal >= MAX_OVERDRIVE ? 0xFF4400 : 0xFFAA00)
+                .setTitle(`${EMOJIS.Overdrive} Overdrive`)
+                .setDescription(`${bar}\n**${old} → ${newVal} / ${MAX_OVERDRIVE}**`)
+                .setFooter(newVal >= MAX_OVERDRIVE ? { text: '⚠️ Overdrive is maxed!' } : { text: `Changed by ${newVal - old > 0 ? '+' : ''}${newVal - old}` });
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
@@ -643,18 +618,7 @@ OR
         // $defend
         if (cmd === 'defend') {
             const userId = message.author.id;
-            
-            if (!requireCharacter(userId, message.member.displayName)) {
-                await message.channel.send(`❌ You have no character set.
-
-Use:
-\`$set <sheet_url>\` to import from Google Sheets
-OR
-\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
-                await del();
-                return;
-            }
-            
+            initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
             const oldA = d.Armor, oldB = d.Barrier;
             d.Armor += d.maxArmor;
@@ -678,17 +642,7 @@ OR
         if (cmd === 'turn') {
             const user = message.mentions.users.first() || message.author;
             const member = await message.guild.members.fetch(user.id);
-            
-            if (!requireCharacter(user.id, member.displayName)) {
-                await message.channel.send(`❌ ${member.displayName} has no character set.
-
-Use:
-\`$set <sheet_url>\` to import from Google Sheets
-OR
-\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
-                await del();
-                return;
-            }
+            initPlayer(user.id, member.displayName);
             const d = playerData.get(user.id);
             d.Armor = 0;
             d.Barrier = 0;
@@ -710,18 +664,7 @@ OR
         // $rest
         if (cmd === 'rest') {
             const userId = message.author.id;
-            
-            if (!requireCharacter(userId, message.member.displayName)) {
-                await message.channel.send(`❌ You have no character set.
-
-Use:
-\`$set <sheet_url>\` to import from Google Sheets
-OR
-\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
-                await del();
-                return;
-            }
-            
+            initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
             d.HP = d.maxHP;
             d.MP = d.maxMP;
@@ -771,7 +714,8 @@ OR
                 .addFields(
                     { name: '🛡️ Armor', value: 'Set to **0**', inline: true },
                     { name: '✨ Barrier', value: 'Set to **0**', inline: true },
-                    { name: '✅ Turns', value: 'Reset', inline: true }
+                    { name: '✅ Turns', value: 'Reset', inline: true },
+                    { name: `${EMOJIS.Overdrive} Overdrive`, value: `**${activeEncounter.overdrive}** / ${MAX_OVERDRIVE} (unchanged)`, inline: true }
                 );
             
             await message.channel.send({ embeds: [embed] });
@@ -782,7 +726,7 @@ OR
         // $ga <d1> <d2> <mod> <gate> <@targets> [a|b|t]
         if (cmd === 'ga') {
             if (args.length < 5) {
-                await message.channel.send('Usage: `$ga <d1> <d2> <mod> <gate> <@targets> [a|b|t]`\n`a`=armor, `b`=barrier, `t`=true');
+                await message.channel.send('Usage: `$ga <d1> <d2> <mod> <gate> <@targets> [type]`\n`a`=armor (default), `b`=barrier, `t`=true');
                 await del();
                 return;
             }
@@ -791,16 +735,9 @@ OR
             
             let dmgType = 'armor';
             const last = args[args.length - 1].toLowerCase();
-            if (last === 'a') {
-                dmgType = 'armor';
-                args.pop();
-            } else if (last === 'b') {
-                dmgType = 'barrier';
-                args.pop();
-            } else if (last === 't') {
-                dmgType = 'true';
-                args.pop();
-            }
+            if (last === 'a') { dmgType = 'armor'; args.pop(); }
+            else if (last === 'b') { dmgType = 'barrier'; args.pop(); }
+            else if (last === 't') { dmgType = 'true'; args.pop(); }
             
             const targets = message.content.match(/<@!?(\d+)>/g) || [];
             const targetIds = targets.map(m => m.match(/\d+/)[0]);
@@ -837,7 +774,7 @@ OR
             
             const embed = new EmbedBuilder()
                 .setColor(crit ? 0xFFD700 : 0x00FF00)
-                .setTitle('🎲 GM Attack - HIT!')
+                .setTitle('🎲 GM Attack — HIT!')
                 .addFields(
                     { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: ≤${gate}`, inline: false },
                     { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}**`, inline: false },
@@ -845,14 +782,17 @@ OR
                 )
                 .setDescription(crit ? '⭐ **CRITICAL!**' : '✅ **HIT!**')
                 .setFooter({ text: `${dmg} ${dmgType} damage` });
+
+            // Encode target IDs into the customId so the button handler can auth against them
+            const targetIdStr = targetIds.join('-');
             
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
-                    .setCustomId(`ga_defend_${dmg}_${dmgType}_${message.id}`)
+                    .setCustomId(`ga_defend_${dmg}_${dmgType}_${targetIdStr}_${message.id}`)
                     .setLabel('🛡️ Defend')
                     .setStyle(ButtonStyle.Success),
                 new ButtonBuilder()
-                    .setCustomId(`ga_take_${dmg}_${dmgType}_${message.id}`)
+                    .setCustomId(`ga_take_${dmg}_${dmgType}_${targetIdStr}_${message.id}`)
                     .setLabel('💔 Take Damage')
                     .setStyle(ButtonStyle.Danger)
             );
@@ -870,7 +810,8 @@ OR
                 activeEncounter.active = true;
                 activeEncounter.combatants = [];
                 activeEncounter.turnsTaken.clear();
-                await message.channel.send('⚔️ Clash started!');
+                activeEncounter.overdrive = 0;
+                await message.channel.send(`⚔️ Clash started! ${EMOJIS.Overdrive} Overdrive reset to 0.`);
                 await del();
                 return;
             }
@@ -879,6 +820,7 @@ OR
                 activeEncounter.active = false;
                 activeEncounter.combatants = [];
                 activeEncounter.turnsTaken.clear();
+                activeEncounter.overdrive = 0;
                 await message.channel.send('✅ Clash ended!');
                 await del();
                 return;
@@ -898,10 +840,8 @@ OR
                 const dbData = await loadPlayerFromDB(userId);
                 if (dbData) {
                     playerData.set(userId, dbData);
-                } else if (!requireCharacter(userId, message.member.displayName)) {
-                    await message.channel.send(`❌ You have no character set.\n\nUse:\n\`$set <sheet_url>\` to import from Google Sheets\nOR\n\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`);
-                    await del();
-                    return;
+                } else {
+                    initPlayer(userId, message.member.displayName);
                 }
                 
                 activeEncounter.combatants.push(userId);
@@ -919,31 +859,21 @@ OR
                 if (mentioned.size === 0) { await message.channel.send('❌ Mention players: `$clash add @player`'); await del(); return; }
                 
                 let added = 0;
-                let skipped = [];
                 for (const [userId] of mentioned) {
                     if (!activeEncounter.combatants.includes(userId)) {
                         const dbData = await loadPlayerFromDB(userId);
                         if (dbData) {
                             playerData.set(userId, dbData);
-                            activeEncounter.combatants.push(userId);
-                            added++;
                         } else {
                             const member = await message.guild.members.fetch(userId);
-                            if (requireCharacter(userId, member.displayName)) {
-                                activeEncounter.combatants.push(userId);
-                                added++;
-                            } else {
-                                skipped.push(member.displayName);
-                            }
+                            initPlayer(userId, member.displayName);
                         }
+                        activeEncounter.combatants.push(userId);
+                        added++;
                     }
                 }
                 
-                let msg = `✅ Added ${added} to clash!`;
-                if (skipped.length > 0) {
-                    msg += `\n⚠️ Skipped (no character): ${skipped.join(', ')}`;
-                }
-                await message.channel.send(msg);
+                await message.channel.send(`✅ Added ${added} to clash!`);
                 await del();
                 return;
             }
@@ -952,9 +882,12 @@ OR
                 if (!activeEncounter.active) { await message.channel.send('❌ No clash.'); await del(); return; }
                 if (activeEncounter.combatants.length === 0) { await message.channel.send('⚔️ No combatants.'); await del(); return; }
                 
+                const bar = buildOverdriveBar(activeEncounter.overdrive);
+                
                 const embed = new EmbedBuilder()
                     .setColor(0xFFAA00)
-                    .setTitle('⚔️ Clash Combatants')
+                    .setTitle('⚔️ Clash')
+                    .setDescription(`${EMOJIS.Overdrive} **Overdrive:** ${bar} **${activeEncounter.overdrive}/${MAX_OVERDRIVE}**`)
                     .setTimestamp();
                 
                 for (const userId of activeEncounter.combatants) {
@@ -980,48 +913,49 @@ OR
         if (cmd === 'guide') {
             const embed = new EmbedBuilder()
                 .setColor(0x00BFFF)
-                .setTitle('📖 Command Guide')
-                .setDescription('**Examples with actual values:**')
+                .setTitle('📖 Eien Saga — Command Guide')
                 .addFields(
                     { 
                         name: '🎮 Setup', 
-                        value: '**Import from Google Sheets:**\n`$set <sheet_url>`\nExample: `$set https://docs.google.com/spreadsheets/d/YOUR_ID/edit#gid=0`\n\n**Manual Setup:**\n`$set <n> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set Gandalf 100 50 100 20 15`\n\n**View:**\n`$view` or `$view @player`', 
+                        value: '`$set <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set Gandalf 100 50 100 20 15`\n`$set <sheet_url>` — import from Google Sheets\n\n`$view` or `$view @player`', 
                         inline: false 
                     },
                     { 
-                        name: '⚔️ Attack', 
-                        value: '`$a <dice1> <dice2> [modifier] [gate]`\nExample: `$a 10 8` (mod and gate default to 0)\nExample: `$a 10 8 5 1` (with modifier +5, gate ≤1)', 
-                        inline: false 
-                    },
-                    { 
-                        name: '💥 Damage', 
-                        value: '`$damage <amount> [type] [@target]`\nExample: `$damage 20` (20 armor damage to self)\nExample: `$damage 30 b @Tank` (30 barrier damage to Tank)\nExample: `$damage 15 t` (15 true damage to self)\n\n**Types:** `a`=armor (default), `b`=barrier, `t`=true', 
-                        inline: false 
-                    },
-                    { 
-                        name: '💉 Resources (Can Exceed Max)', 
-                        value: '`$hp <±amount|full|zero>` HP can go above max\n`$mp <±amount|full|zero>` MP can go above max\n`$ip <±amount|full|zero>`\n`$armor <±amount|full|zero>`\n`$barrier <±amount|full|zero>`\n\nExamples:\n`$hp -20` (lose 20)\n`$mp +50` (gain 50, can exceed max)\n`$armor full` (set to max)', 
-                        inline: false 
-                    },
-                    { 
-                        name: '🛡️ Quick Actions', 
-                        value: '`$defend` - Add max armor+barrier to current\n`$turn` or `$turn @player` - Set armor/barrier to 0\n`$rest` - HP/MP to max, armor/barrier to 0\n`$round` - Clear everyone\'s armor/barrier to 0', 
+                        name: '⚔️ Attack (Player)', 
+                        value: '`$a <dice1> <dice2> <modifier> <gate>`\nExample: `$a 10 8 5 1`', 
                         inline: false 
                     },
                     { 
                         name: '🎲 GM Attack', 
-                        value: '`$ga <d1> <d2> <mod> <gate> @targets [type]`\nExample: `$ga 10 8 15 1 @Tank @DPS`\nExample: `$ga 12 6 20 2 @Wizard b`\n\n**Types:** `a`=armor (default), `b`=barrier, `t`=true', 
+                        value: '`$ga <d1> <d2> <mod> <gate> @targets [type]`\nExample: `$ga 10 8 15 1 @Tank @DPS`\n**Types:** `a`=armor (default), `b`=barrier, `t`=true\nTargets click **Defend** or **Take Damage** — only tagged players can respond.', 
                         inline: false 
+                    },
+                    {
+                        name: '💔 Apply Damage (Cascade)',
+                        value: '`$dmg <amount> [a|b|t] [@target]`\nApplies damage through Armor/Barrier first, overflow hits HP.\nExample: `$dmg 20 a` or `$dmg 15 b @player` or `$dmg 30 t`',
+                        inline: false
+                    },
+                    { 
+                        name: '💉 Resources', 
+                        value: '`$hp`, `$mp`, `$ip`, `$armor`, `$barrier` — use `±amount`, `full`, or `zero`\nExample: `$hp -20` · `$mp +50` · `$armor full`\n\n`$defend` — add max armor+barrier\n`$turn [@player]` — clear armor+barrier to 0\n`$rest` — HP/MP to max, armor/barrier to 0', 
+                        inline: false 
+                    },
+                    {
+                        name: `${EMOJIS.Overdrive} Overdrive (Shared Pool)`,
+                        value: `\`$overdrive [±amount|zero]\` — adjust or view the shared Overdrive pool (max ${MAX_OVERDRIVE})\nAlias: \`$od\`\nExample: \`$od +1\` · \`$od -2\` · \`$od zero\`\nAlways visible in \`$clash list\`.`,
+                        inline: false
                     },
                     { 
                         name: '⚔️ Clash', 
-                        value: '`$clash start` - Start encounter\n`$clash join` - Join yourself\n`$clash add @players` - Add others\n`$clash list` - Show all (with IP!)\n`$clash end` - End encounter', 
+                        value: '`$clash start` — start encounter (resets Overdrive)\n`$clash join` — join yourself\n`$clash add @players` — add others\n`$clash list` — show all combatants + Overdrive\n`$clash end` — end encounter\n\n`$round` — new round (clears armor/barrier, resets turns)', 
                         inline: false 
                     }
                 )
-                .setFooter({ text: 'Tip: Import from Google Sheets! | HP/MP can go above max' });
+                .setFooter({ text: 'Eien Saga Combat Tracker' });
             
             await message.channel.send({ embeds: [embed] });
+            await del();
+            return;
         }
         
     } catch (err) {
@@ -1030,7 +964,21 @@ OR
     }
 });
 
-// Button handler for ga
+// ========================================
+// OVERDRIVE BAR HELPER
+// ========================================
+function buildOverdriveBar(current) {
+    const filled = '🟧';
+    const empty = '⬛';
+    return filled.repeat(current) + empty.repeat(Math.max(0, MAX_OVERDRIVE - current));
+}
+
+// ========================================
+// BUTTON HANDLER — $ga defend/take
+// Auth: only tagged targets can respond
+// customId format: ga_{action}_{dmg}_{dmgType}_{targetIds...}_{messageId}
+// targetIds are joined with '-', messageId is always last
+// ========================================
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
     
@@ -1038,17 +986,22 @@ client.on('interactionCreate', async interaction => {
     if (parts[0] !== 'ga') return;
     
     try {
-        const [, action, dmgStr, dmgType] = parts;
-        const dmg = parseInt(dmgStr);
-        
-        const userId = interaction.user.id;
-        const member = interaction.member;
-        
-        if (!requireCharacter(userId, member.displayName)) {
-            await interaction.reply({ content: `❌ You have no character set.\n\nUse:\n\`$set <sheet_url>\` to import from Google Sheets\nOR\n\`$set <n> <hp> <mp> <ip> <armor> <barrier>\` to set manually`, ephemeral: true });
+        // parts: [ga, action, dmg, dmgType, targetIdStr, messageId]
+        const action = parts[1];
+        const dmg = parseInt(parts[2]);
+        const dmgType = parts[3];
+        // parts[4] = hyphen-joined targetIds, parts[5] = messageId (ignored, just uniqueness)
+        const targetIds = parts[4] ? parts[4].split('-') : [];
+
+        // Auth check — only the actual targets can respond
+        if (targetIds.length > 0 && !targetIds.includes(interaction.user.id)) {
+            await interaction.reply({ content: '❌ This attack wasn\'t aimed at you.', ephemeral: true });
             return;
         }
-        
+
+        const userId = interaction.user.id;
+        const member = interaction.member;
+        initPlayer(userId, member.displayName);
         const d = playerData.get(userId);
         
         const oldA = d.Armor, oldB = d.Barrier, oldHP = d.HP;
@@ -1064,48 +1017,26 @@ client.on('interactionCreate', async interaction => {
             d.Barrier += d.maxBarrier;
         }
         
-        // Apply damage
-        if (dmgType === 'armor') {
-            const overflow = Math.max(0, dmg - d.Armor);
-            d.Armor = Math.max(0, d.Armor - dmg);
-            
-            if (isDefend) {
-                embed.addFields({ name: `${EMOJIS.Armor} Armor`, value: `${oldA} +${d.maxArmor} = ${oldA + d.maxArmor} → **${d.Armor}**`, inline: true });
-                embed.addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${oldB} +${d.maxBarrier} = **${d.Barrier}**`, inline: true });
+        // Apply damage using the shared cascade helper
+        const cascadeLines = applyDamageCascade(d, dmg, dmgType);
+
+        if (isDefend) {
+            // Show the defend boost that happened before damage
+            if (dmgType === 'armor') {
+                embed.addFields({ name: `${EMOJIS.Armor} Defended`, value: `${oldA} +${d.maxArmor - (d.Armor === 0 ? 0 : 0)} = boosted`, inline: true });
+                embed.addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${oldB} +${d.maxBarrier} = boosted`, inline: true });
+            } else if (dmgType === 'barrier') {
+                embed.addFields({ name: `${EMOJIS.Armor} Armor`, value: `${oldA} +${d.maxArmor} = boosted`, inline: true });
+                embed.addFields({ name: `${EMOJIS.Barrier} Defended`, value: `${oldB} +${d.maxBarrier} = boosted`, inline: true });
             } else {
-                embed.addFields({ name: `${EMOJIS.Armor} Armor`, value: `${oldA} → **${d.Armor}**`, inline: true });
+                embed.addFields({ name: `${EMOJIS.Armor} Armor`, value: `${oldA} +${d.maxArmor} = boosted`, inline: true });
+                embed.addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${oldB} +${d.maxBarrier} = boosted`, inline: true });
             }
-            
-            if (overflow > 0) {
-                d.HP = Math.max(0, d.HP - overflow);
-                embed.addFields({ name: '💔 Overflow', value: `${overflow} dmg → HP: ${oldHP} → **${d.HP}**`, inline: false });
-            }
-        } else if (dmgType === 'barrier') {
-            const overflow = Math.max(0, dmg - d.Barrier);
-            d.Barrier = Math.max(0, d.Barrier - dmg);
-            
-            if (isDefend) {
-                embed.addFields({ name: `${EMOJIS.Armor} Armor`, value: `${oldA} +${d.maxArmor} = **${d.Armor}**`, inline: true });
-                embed.addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${oldB} +${d.maxBarrier} = ${oldB + d.maxBarrier} → **${d.Barrier}**`, inline: true });
-            } else {
-                embed.addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${oldB} → **${d.Barrier}**`, inline: true });
-            }
-            
-            if (overflow > 0) {
-                d.HP = Math.max(0, d.HP - overflow);
-                embed.addFields({ name: '💔 Overflow', value: `${overflow} dmg → HP: ${oldHP} → **${d.HP}**`, inline: false });
-            }
-        } else {
-            // True damage
-            d.HP = Math.max(0, d.HP - dmg);
-            
-            if (isDefend) {
-                embed.addFields({ name: `${EMOJIS.Armor} Armor`, value: `${oldA} +${d.maxArmor} = **${d.Armor}**`, inline: true });
-                embed.addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${oldB} +${d.maxBarrier} = **${d.Barrier}**`, inline: true });
-            }
-            
-            embed.addFields({ name: '💔 True Damage', value: `${dmg} → HP: ${oldHP} → **${d.HP}**`, inline: false });
         }
+
+        embed.addFields({ name: 'Result', value: cascadeLines.join('\n'), inline: false });
+
+        if (d.HP === 0) embed.setFooter({ text: '💀 HP reached 0!' });
         
         await interaction.reply({ embeds: [embed] });
     } catch (err) {
