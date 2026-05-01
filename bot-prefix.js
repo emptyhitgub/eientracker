@@ -24,7 +24,7 @@ const playerData = new Map();
 const activeEncounter = { active: false, combatants: [], turnsTaken: new Set(), overdrive: 0 };
 
 const EMOJIS = { HP: '❤️', MP: '💧', IP: '💰', Armor: '🛡️', Barrier: '✨', Overdrive: '⚡' };
-const MAX_OVERDRIVE = 6;
+const MAX_OVERDRIVE = 12;
 
 function initPlayer(userId, username) {
     if (!playerData.has(userId)) {
@@ -579,11 +579,11 @@ client.on('messageCreate', async message => {
 
             if (!args[0]) {
                 // Just display
-                const bar = buildOverdriveBar(old);
+                // new
                 const embed = new EmbedBuilder()
                     .setColor(0xFFAA00)
-                    .setTitle(`${EMOJIS.Overdrive} Overdrive`)
-                    .setDescription(`${bar}\n**${old} / ${MAX_OVERDRIVE}**`);
+                  .setTitle(`${EMOJIS.Overdrive} Overdrive`)
+                 .setDescription(`${buildOverdriveBar(old)}\n**${old} / ${MAX_OVERDRIVE}**`);
                 await message.channel.send({ embeds: [embed] });
                 await del();
                 return;
@@ -602,12 +602,11 @@ client.on('messageCreate', async message => {
             }
 
             const newVal = activeEncounter.overdrive;
-            const bar = buildOverdriveBar(newVal);
             const direction = newVal > old ? '📈' : newVal < old ? '📉' : '➡️';
             const embed = new EmbedBuilder()
                 .setColor(newVal >= MAX_OVERDRIVE ? 0xFF4400 : 0xFFAA00)
                 .setTitle(`${EMOJIS.Overdrive} Overdrive`)
-                .setDescription(`${bar}\n**${old} → ${newVal} / ${MAX_OVERDRIVE}**`)
+                .setDescription(`${buildOverdriveBar(newVal)}\n**${old} → ${newVal} / ${MAX_OVERDRIVE}**`)
                 .setFooter(newVal >= MAX_OVERDRIVE ? { text: '⚠️ Overdrive is maxed!' } : { text: `Changed by ${newVal - old > 0 ? '+' : ''}${newVal - old}` });
 
             await message.channel.send({ embeds: [embed] });
@@ -878,12 +877,10 @@ client.on('messageCreate', async message => {
                 if (!activeEncounter.active) { await message.channel.send('❌ No clash.'); await del(); return; }
                 if (activeEncounter.combatants.length === 0) { await message.channel.send('⚔️ No combatants.'); await del(); return; }
                 
-                const bar = buildOverdriveBar(activeEncounter.overdrive);
-                
                 const embed = new EmbedBuilder()
                     .setColor(0xFFAA00)
                     .setTitle('⚔️ Clash')
-                    .setDescription(`${EMOJIS.Overdrive} **Overdrive:** ${bar} **${activeEncounter.overdrive}/${MAX_OVERDRIVE}**`)
+                    .setDescription(`${EMOJIS.Overdrive} **Overdrive:** ${buildOverdriveBar(activeEncounter.overdrive)} **${activeEncounter.overdrive}/${MAX_OVERDRIVE}**`)
                     .setTimestamp();
                 
                 for (const userId of activeEncounter.combatants) {
@@ -964,9 +961,7 @@ client.on('messageCreate', async message => {
 // OVERDRIVE BAR HELPER
 // ========================================
 function buildOverdriveBar(current) {
-    const filled = '🟧';
-    const empty = '⬛';
-    return filled.repeat(current) + empty.repeat(Math.max(0, MAX_OVERDRIVE - current));
+    return EMOJIS.Overdrive.repeat(current) || '—';
 }
 
 // ========================================
