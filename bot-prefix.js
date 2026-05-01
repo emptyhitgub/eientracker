@@ -616,7 +616,7 @@ client.on('messageCreate', async message => {
         }
         
         // $defend
-        if (cmd === 'defend') {
+        if (cmd === 'defend' || cmd === 'd') {
             const userId = message.author.id;
             initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
@@ -788,16 +788,12 @@ client.on('messageCreate', async message => {
             
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
-                    .setCustomId(`ga_defend_${dmg}_${dmgType}_${targetIdStr}_${message.id}`)
-                    .setLabel('🛡️ Defend')
-                    .setStyle(ButtonStyle.Success),
-                new ButtonBuilder()
                     .setCustomId(`ga_take_${dmg}_${dmgType}_${targetIdStr}_${message.id}`)
                     .setLabel('💔 Take Damage')
                     .setStyle(ButtonStyle.Danger)
             );
             
-            await message.channel.send({ content: `${targets.join(' ')} ⚔️ INCOMING!`, embeds: [embed], components: [row] });
+            await message.channel.send({ content: `${targets.join(' ')} ⚔️ INCOMING! Please $d before clicking the button if you want to Defend`, embeds: [embed], components: [row] });
             await del();
             return;
         }
