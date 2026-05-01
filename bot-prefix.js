@@ -799,7 +799,7 @@ client.on('messageCreate', async message => {
         }
         
         // $clash
-        if (cmd === 'clash') {
+        if (cmd === 'clash' || cmd === 'c') {
             const sub = args[0]?.toLowerCase();
             
             if (sub === 'start') {
@@ -905,8 +905,8 @@ client.on('messageCreate', async message => {
             return;
         }
         
-        // $guide
-        if (cmd === 'guide') {
+        // $help
+        if (cmd === 'help') {
             const embed = new EmbedBuilder()
                 .setColor(0x00BFFF)
                 .setTitle('📖 Eien Saga — Command Guide')
@@ -943,7 +943,7 @@ client.on('messageCreate', async message => {
                     },
                     { 
                         name: '⚔️ Clash', 
-                        value: '`$clash start` — start encounter (resets Overdrive)\n`$clash join` — join yourself\n`$clash add @players` — add others\n`$clash list` — show all combatants + Overdrive\n`$clash end` — end encounter\n\n`$round` — new round (clears armor/barrier, resets turns)', 
+                        value: '`$clash start or $c start` — start encounter (resets Overdrive)\n`$clash join` — join yourself\n`$clash add @players` — add others\n`$clash list` — show all combatants + Overdrive\n`$clash end` — end encounter\n\n`$round` — new round (clears armor/barrier, resets turns)', 
                         inline: false 
                     }
                 )
