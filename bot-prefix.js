@@ -161,12 +161,10 @@ async function extractCharacterFromSheet(sheetUrl) {
     if (!data) return { error: 'Could not fetch sheet. Make sure it\'s public (Anyone with link can view)' };
     
     try {
-        const maxHP = getValueFromRange(data, ['Q15', 'R15', 'S15', 'T15', 'Q16', 'R16']) || 100;
-        const maxMP = getValueFromRange(data, ['Q18', 'R18', 'S18', 'T18', 'Q19', 'R19']) || 50;
         
-        const baseIP = getValueFromRange(data, ['Q21', 'R21', 'S21', 'T21', 'Q22', 'R22', 'S22', 'T22']) || 0;
-        const bonusIP = getValueFromRange(data, ['Q23', 'R23', 'S23', 'T23']) || 0;
-        const maxIP = baseIP + bonusIP || 100;
+        const maxHP = parseInt(getCellValue(data, 'Q15')) || 50;
+        const maxMP = parseInt(getCellValue(data, 'Q18')) || 50;
+        const maxIP = parseInt(getCellValue(data, 'Q21')) || 10;
         
         const maxArmor = getValueFromRange(data, ['AA15', 'AB15', 'AA16', 'AB16']) || 20;
         const maxBarrier = getValueFromRange(data, ['AA18', 'AB18', 'AA19', 'AB19']) || 15;
