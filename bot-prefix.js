@@ -162,17 +162,17 @@ async function extractCharacterFromSheet(sheetUrl) {
     
     try {
         
-        const maxHP = parseInt(getCellValue(data, 'U15')) || 100;
-const maxMP = parseInt(getCellValue(data, 'U18')) || 50;
-const maxIP = parseInt(getCellValue(data, 'U21')) || 100;
+const maxHP = (parseInt(getCellValue(data, 'Q15')) || 0) + (parseInt(getCellValue(data, 'Q17')) || 0);
+const maxMP = (parseInt(getCellValue(data, 'Q18')) || 0) + (parseInt(getCellValue(data, 'Q20')) || 0);
+const maxIP = (parseInt(getCellValue(data, 'Q21')) || 0) + (parseInt(getCellValue(data, 'Q23')) || 0);
 
 const armorA = parseInt(getCellValue(data, 'AA15')) || 0;
 const armorB = parseInt(getCellValue(data, 'AA17')) || 0;
-const maxArmor = armorA + armorB || 20;
+const maxArmor = armorA + armorB || 0;
 
 const barrierA = parseInt(getCellValue(data, 'AA18')) || 0;
 const barrierB = parseInt(getCellValue(data, 'AA20')) || 0;
-const maxBarrier = barrierA + barrierB || 15;
+const maxBarrier = barrierA + barrierB || 0;
         
         const force = parseDiceValue(getCellValue(data, 'S26'));
         const mind = parseDiceValue(getCellValue(data, 'S28'));
@@ -358,6 +358,7 @@ client.on('messageCreate', async message => {
             const embed = new EmbedBuilder()
                 .setColor(0x0099FF)
                 .setTitle(`${d.characterName}`)
+                .setThumbnail(d.imageUrl || null)  // add this line
                 .addFields(
                     { name: `${EMOJIS.HP} HP`, value: `${d.HP}/${d.maxHP}`, inline: true },
                     { name: `${EMOJIS.MP} MP`, value: `${d.MP}/${d.maxMP}`, inline: true },
@@ -415,7 +416,31 @@ client.on('messageCreate', async message => {
             await del();
             return;
         }
-        
+        if (cmd === 'image') {
+    const userId = message.author.id;
+    initPlayer(userId, message.member.displayName);
+    const d = playerData.get(userId);
+
+    if (!args[0]) {
+        // Clear image
+        d.imageUrl = null;
+        await message.channel.send(`🖼️ **${d.characterName}**'s image cleared.`);
+        await del();
+        return;
+    }
+
+    d.imageUrl = args[0];
+
+    const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle(`🖼️ ${d.characterName}`)
+        .setDescription('Image set!')
+        .setImage(args[0]);
+
+    await message.channel.send({ embeds: [embed] });
+    await del();
+    return;
+}
         // $a <d1> <d2> <mod> <gate>
         if (cmd === 'a' || cmd === 'attack') {
             if (args.length < 4) {
