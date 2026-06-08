@@ -971,8 +971,8 @@ client.on('messageCreate', async message => {
                 for (const userId of encounter.combatants) {
                     const d = playerData.get(userId);
                     if (d) {
-                        const icon = encounter.turnsTaken.has(userId) ? '✅' : '⬜';
-                        lines.push(`${icon} **${d.characterName}**`);
+                        const icon = encounter.turnsTaken.has(userId) ? '✅' : '';
+                        lines.push(`${icon} **${d.characterName}**`.trim());
                         lines.push(`${EMOJIS.HP} ${d.HP}/${d.maxHP} · ${EMOJIS.MP} ${d.MP}/${d.maxMP} · ${EMOJIS.IP} ${d.IP}/${d.maxIP}`);
                         lines.push(`${EMOJIS.Armor} ${d.Armor}/${d.maxArmor} · ${EMOJIS.Barrier} ${d.Barrier}/${d.maxBarrier}`);
                         lines.push('');
