@@ -22,7 +22,21 @@ if (useDatabase) {
  
 const playerData = new Map();
 const playerHistory = new Map(); // userId -> array of snapshots (max 5)
-const activeEncounter = { active: false, combatants: [], turnsTaken: new Set(), overdrive: 0 };
+
+// FIX 1: channel-scoped encounters — keyed by channelId
+const activeEncounters = new Map(); // channelId -> { active, combatants, turnsTaken, overdrive }
+
+function getEncounter(channelId) {
+    if (!activeEncounters.has(channelId)) {
+        activeEncounters.set(channelId, {
+            active: false,
+            combatants: [],
+            turnsTaken: new Set(),
+            overdrive: 0
+        });
+    }
+    return activeEncounters.get(channelId);
+}
  
 const EMOJIS = { HP: '❤️', MP: '💧', IP: '💰', Armor: '🛡️', Barrier: '✨', Overdrive: '⚡' };
 const MAX_OVERDRIVE = 12;
@@ -44,7 +58,7 @@ function saveSnapshot(userId) {
     if (!d) return;
     if (!playerHistory.has(userId)) playerHistory.set(userId, []);
     const history = playerHistory.get(userId);
-    history.push({ ...d }); // shallow copy is fine — all primitives
+    history.push({ ...d });
     if (history.length > MAX_HISTORY) history.shift();
 }
  
@@ -151,16 +165,6 @@ function getCellValue(data, cellRef) {
     if (!pos || !data[pos.row]) return null;
     const value = data[pos.row][pos.col];
     return value || null;
-}
- 
-function getValueFromRange(data, cells) {
-    for (const cell of cells) {
-        const value = getCellValue(data, cell);
-        if (value && !isNaN(parseInt(value))) {
-            return parseInt(value);
-        }
-    }
-    return 0;
 }
  
 function parseDiceValue(value) {
@@ -273,6 +277,7 @@ client.on('messageCreate', async message => {
     
     const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
     const cmd = args.shift().toLowerCase();
+    const channelId = message.channel.id;
     
     const del = async () => { try { await message.delete(); } catch (e) {} };
     
@@ -394,27 +399,30 @@ client.on('messageCreate', async message => {
             return;
         }
  
-        // $undo — restore previous state for the calling user
+        // FIX 4: $undo — restore previous state
+        // Root cause was saveSnapshot not being called in button handler (ga take damage),
+        // and $undo not calling initPlayer before checking playerData.
         if (cmd === 'undo') {
             const userId = message.author.id;
- 
+
+            // Must have a character first
             if (!playerData.has(userId)) {
                 await message.channel.send('❌ No character found. Use `$set` first.');
                 await del();
                 return;
             }
- 
+
             const snapshot = popSnapshot(userId);
             if (!snapshot) {
                 await message.channel.send('❌ Nothing to undo.');
                 await del();
                 return;
             }
- 
-            const before = playerData.get(userId);
+
+            const before = { ...playerData.get(userId) };
             playerData.set(userId, snapshot);
             const d = playerData.get(userId);
- 
+
             const embed = new EmbedBuilder()
                 .setColor(0xAAAAAA)
                 .setTitle(`↩️ ${d.characterName} — Undone`)
@@ -426,7 +434,7 @@ client.on('messageCreate', async message => {
                     { name: `${EMOJIS.Barrier} Barrier`, value: `${before.Barrier} → **${d.Barrier}**/${d.maxBarrier}`, inline: true }
                 )
                 .setFooter({ text: `Up to ${MAX_HISTORY} undos available` });
- 
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
@@ -657,13 +665,14 @@ client.on('messageCreate', async message => {
  
         // $overdrive [±amount|zero]
         if (cmd === 'overdrive' || cmd === 'od') {
-            if (!activeEncounter.active) {
+            const encounter = getEncounter(channelId);
+            if (!encounter.active) {
                 await message.channel.send('❌ No active clash. Use `$clash start` first.');
                 await del();
                 return;
             }
  
-            const old = activeEncounter.overdrive;
+            const old = encounter.overdrive;
  
             if (!args[0]) {
                 const embed = new EmbedBuilder()
@@ -676,7 +685,7 @@ client.on('messageCreate', async message => {
             }
  
             if (args[0] === 'zero') {
-                activeEncounter.overdrive = 0;
+                encounter.overdrive = 0;
             } else {
                 const delta = parseInt(args[0]);
                 if (isNaN(delta)) {
@@ -684,10 +693,10 @@ client.on('messageCreate', async message => {
                     await del();
                     return;
                 }
-                activeEncounter.overdrive = Math.max(0, Math.min(MAX_OVERDRIVE, old + delta));
+                encounter.overdrive = Math.max(0, Math.min(MAX_OVERDRIVE, old + delta));
             }
  
-            const newVal = activeEncounter.overdrive;
+            const newVal = encounter.overdrive;
             const embed = new EmbedBuilder()
                 .setColor(newVal >= MAX_OVERDRIVE ? 0xFF4400 : 0xFFAA00)
                 .setTitle(`${EMOJIS.Overdrive} Overdrive`)
@@ -776,14 +785,15 @@ client.on('messageCreate', async message => {
         
         // $round
         if (cmd === 'round') {
-            if (!activeEncounter.active) {
+            const encounter = getEncounter(channelId);
+            if (!encounter.active) {
                 await message.channel.send('❌ No active clash. Use `$clash start`');
                 await del();
                 return;
             }
             
             let cleared = 0;
-            for (const userId of activeEncounter.combatants) {
+            for (const userId of encounter.combatants) {
                 const d = playerData.get(userId);
                 if (d) {
                     saveSnapshot(userId);
@@ -793,7 +803,7 @@ client.on('messageCreate', async message => {
                 }
             }
             
-            activeEncounter.turnsTaken.clear();
+            encounter.turnsTaken.clear();
             
             const embed = new EmbedBuilder()
                 .setColor(0xFFAA00)
@@ -803,7 +813,7 @@ client.on('messageCreate', async message => {
                     { name: '🛡️ Armor', value: 'Set to **0**', inline: true },
                     { name: '✨ Barrier', value: 'Set to **0**', inline: true },
                     { name: '✅ Turns', value: 'Reset', inline: true },
-                    { name: `${EMOJIS.Overdrive} Overdrive`, value: `**${activeEncounter.overdrive}** / ${MAX_OVERDRIVE} (unchanged)`, inline: true }
+                    { name: `${EMOJIS.Overdrive} Overdrive`, value: `**${encounter.overdrive}** / ${MAX_OVERDRIVE} (unchanged)`, inline: true }
                 );
             
             await message.channel.send({ embeds: [embed] });
@@ -811,10 +821,11 @@ client.on('messageCreate', async message => {
             return;
         }
         
-        // $ga <d1> <d2> <mod> <gate> <@targets> [a|b|t]
+        // $ga <d1> <d2> <mod> <gate> [type]
+        // FIX 2: targets removed — anyone can click Take Damage
         if (cmd === 'ga') {
-            if (args.length < 5) {
-                await message.channel.send('Usage: `$ga <d1> <d2> <mod> <gate> <@targets> [type]`\n`a`=armor (default), `b`=barrier, `t`=true');
+            if (args.length < 4) {
+                await message.channel.send('Usage: `$ga <d1> <d2> <mod> <gate> [type]`\n`a`=armor (default), `b`=barrier, `t`=true');
                 await del();
                 return;
             }
@@ -823,17 +834,9 @@ client.on('messageCreate', async message => {
             
             let dmgType = 'armor';
             const last = args[args.length - 1].toLowerCase();
-            if (last === 'a') { dmgType = 'armor'; args.pop(); }
-            else if (last === 'b') { dmgType = 'barrier'; args.pop(); }
-            else if (last === 't') { dmgType = 'true'; args.pop(); }
-            
-            const targets = message.content.match(/<@!?(\d+)>/g) || [];
-            
-            if (targets.length === 0) {
-                await message.channel.send('❌ No targets found. Mention with @player');
-                await del();
-                return;
-            }
+            if (last === 'a') dmgType = 'armor';
+            else if (last === 'b') dmgType = 'barrier';
+            else if (last === 't') dmgType = 'true';
             
             const r1 = Math.floor(Math.random() * d1) + 1;
             const r2 = Math.floor(Math.random() * d2) + 1;
@@ -859,16 +862,16 @@ client.on('messageCreate', async message => {
                 return;
             }
             
+            const typeLabel = dmgType === 'armor' ? 'Armor' : dmgType === 'barrier' ? 'Barrier' : 'True';
             const embed = new EmbedBuilder()
-                .setColor(crit ? 0xFFD700 : 0x00FF00)
+                .setColor(crit ? 0xFFD700 : 0xFF6B6B)
                 .setTitle('🎲 GM Attack — HIT!')
                 .addFields(
                     { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: ≤${gate}`, inline: false },
-                    { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}**`, inline: false },
-                    { name: 'Targets', value: targets.join(' '), inline: false }
+                    { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}** ${typeLabel}`, inline: false }
                 )
                 .setDescription(crit ? '⭐ **CRITICAL!**' : '✅ **HIT!**')
-                .setFooter({ text: `${dmg} ${dmgType} damage — use $d first if you want to defend` });
+                .setFooter({ text: 'Click Take Damage to apply — use $defend first to add defenses' });
             
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
@@ -877,7 +880,7 @@ client.on('messageCreate', async message => {
                     .setStyle(ButtonStyle.Danger)
             );
             
-            await message.channel.send({ content: `${targets.join(' ')} ⚔️ INCOMING!`, embeds: [embed], components: [row] });
+            await message.channel.send({ embeds: [embed], components: [row] });
             await del();
             return;
         }
@@ -885,33 +888,34 @@ client.on('messageCreate', async message => {
         // $clash
         if (cmd === 'clash' || cmd === 'c') {
             const sub = args[0]?.toLowerCase();
+            const encounter = getEncounter(channelId);
             
             if (sub === 'start') {
-                activeEncounter.active = true;
-                activeEncounter.combatants = [];
-                activeEncounter.turnsTaken.clear();
-                activeEncounter.overdrive = 0;
+                encounter.active = true;
+                encounter.combatants = [];
+                encounter.turnsTaken = new Set();
+                encounter.overdrive = 0;
                 await message.channel.send(`⚔️ Clash started! ${EMOJIS.Overdrive} Overdrive reset to 0.`);
                 await del();
                 return;
             }
             
             if (sub === 'end') {
-                activeEncounter.active = false;
-                activeEncounter.combatants = [];
-                activeEncounter.turnsTaken.clear();
-                activeEncounter.overdrive = 0;
+                encounter.active = false;
+                encounter.combatants = [];
+                encounter.turnsTaken = new Set();
+                encounter.overdrive = 0;
                 await message.channel.send('✅ Clash ended!');
                 await del();
                 return;
             }
             
             if (sub === 'join') {
-                if (!activeEncounter.active) { await message.channel.send('❌ No clash. Use `$clash start`'); await del(); return; }
+                if (!encounter.active) { await message.channel.send('❌ No clash. Use `$clash start`'); await del(); return; }
                 
                 const userId = message.author.id;
                 
-                if (activeEncounter.combatants.includes(userId)) {
+                if (encounter.combatants.includes(userId)) {
                     await message.channel.send('❌ You\'re already in the clash!');
                     await del();
                     return;
@@ -924,7 +928,7 @@ client.on('messageCreate', async message => {
                     initPlayer(userId, message.member.displayName);
                 }
                 
-                activeEncounter.combatants.push(userId);
+                encounter.combatants.push(userId);
                 const d = playerData.get(userId);
                 
                 await message.channel.send(`✅ **${d.characterName}** joined the clash!`);
@@ -933,14 +937,14 @@ client.on('messageCreate', async message => {
             }
             
             if (sub === 'add') {
-                if (!activeEncounter.active) { await message.channel.send('❌ No clash. Use `$clash start`'); await del(); return; }
+                if (!encounter.active) { await message.channel.send('❌ No clash. Use `$clash start`'); await del(); return; }
                 
                 const mentioned = message.mentions.users;
                 if (mentioned.size === 0) { await message.channel.send('❌ Mention players: `$clash add @player`'); await del(); return; }
                 
                 let added = 0;
                 for (const [userId] of mentioned) {
-                    if (!activeEncounter.combatants.includes(userId)) {
+                    if (!encounter.combatants.includes(userId)) {
                         const dbData = await loadPlayerFromDB(userId);
                         if (dbData) {
                             playerData.set(userId, dbData);
@@ -948,7 +952,7 @@ client.on('messageCreate', async message => {
                             const member = await message.guild.members.fetch(userId);
                             initPlayer(userId, member.displayName);
                         }
-                        activeEncounter.combatants.push(userId);
+                        encounter.combatants.push(userId);
                         added++;
                     }
                 }
@@ -958,24 +962,31 @@ client.on('messageCreate', async message => {
                 return;
             }
             
+            // FIX 3: $clash list — use description text instead of fields to avoid white box
             if (sub === 'list') {
-                if (!activeEncounter.active) { await message.channel.send('❌ No clash.'); await del(); return; }
-                if (activeEncounter.combatants.length === 0) { await message.channel.send('⚔️ No combatants.'); await del(); return; }
+                if (!encounter.active) { await message.channel.send('❌ No clash.'); await del(); return; }
+                if (encounter.combatants.length === 0) { await message.channel.send('⚔️ No combatants.'); await del(); return; }
+                
+                const lines = [];
+                for (const userId of encounter.combatants) {
+                    const d = playerData.get(userId);
+                    if (d) {
+                        const icon = encounter.turnsTaken.has(userId) ? '✅' : '⬜';
+                        lines.push(`${icon} **${d.characterName}**`);
+                        lines.push(`${EMOJIS.HP} ${d.HP}/${d.maxHP} · ${EMOJIS.MP} ${d.MP}/${d.maxMP} · ${EMOJIS.IP} ${d.IP}/${d.maxIP}`);
+                        lines.push(`${EMOJIS.Armor} ${d.Armor}/${d.maxArmor} · ${EMOJIS.Barrier} ${d.Barrier}/${d.maxBarrier}`);
+                        lines.push('');
+                    }
+                }
                 
                 const embed = new EmbedBuilder()
                     .setColor(0xFFAA00)
                     .setTitle('⚔️ Clash')
-                    .setDescription(`${EMOJIS.Overdrive} **Overdrive:** ${buildOverdriveBar(activeEncounter.overdrive)} **${activeEncounter.overdrive}/${MAX_OVERDRIVE}**`)
+                    .setDescription(
+                        `${EMOJIS.Overdrive} **Overdrive:** ${buildOverdriveBar(encounter.overdrive)} **${encounter.overdrive}/${MAX_OVERDRIVE}**\n\n` +
+                        lines.join('\n')
+                    )
                     .setTimestamp();
-                
-                for (const userId of activeEncounter.combatants) {
-                    const d = playerData.get(userId);
-                    if (d) {
-                        const icon = activeEncounter.turnsTaken.has(userId) ? '✅' : '⬜';
-                        const value = `${EMOJIS.HP} ${d.HP}/${d.maxHP} | ${EMOJIS.MP} ${d.MP}/${d.maxMP} | ${EMOJIS.IP} ${d.IP}/${d.maxIP}\n${EMOJIS.Armor} ${d.Armor}/${d.maxArmor} | ${EMOJIS.Barrier} ${d.Barrier}/${d.maxBarrier}`;
-                        embed.addFields({ name: `${icon} ${d.characterName}`, value: value, inline: false });
-                    }
-                }
                 
                 await message.channel.send({ embeds: [embed] });
                 await del();
@@ -1005,7 +1016,7 @@ client.on('messageCreate', async message => {
                     },
                     { 
                         name: '🎲 GM Attack', 
-                        value: '`$ga <d1> <d2> <mod> <gate> @targets [type]`\nExample: `$ga 10 8 15 1 @Tank @DPS`\n**Types:** `a`=armor (default), `b`=barrier, `t`=true\nAnyone can click **Take Damage**. Use `$d` first to defend.', 
+                        value: '`$ga <d1> <d2> <mod> <gate> [type]`\nExample: `$ga 10 8 15 1` or `$ga 10 8 15 1 b`\n**Types:** `a`=armor (default), `b`=barrier, `t`=true\nAnyone can click **Take Damage**.', 
                         inline: false 
                     },
                     {
@@ -1030,7 +1041,7 @@ client.on('messageCreate', async message => {
                     },
                     { 
                         name: '⚔️ Clash', 
-                        value: '`$clash start` / `$c start` — start encounter (resets Overdrive)\n`$clash join` — join yourself\n`$clash add @players` — add others\n`$clash list` — show all combatants + Overdrive\n`$clash end` — end encounter\n\n`$round` — new round (clears armor/barrier, resets turns)', 
+                        value: '`$clash start` / `$c start` — start encounter (resets Overdrive, scoped to this channel)\n`$clash join` — join yourself\n`$clash add @players` — add others\n`$clash list` — show all combatants + Overdrive\n`$clash end` — end encounter\n\n`$round` — new round (clears armor/barrier, resets turns)', 
                         inline: false 
                     }
                 )
@@ -1049,7 +1060,7 @@ client.on('messageCreate', async message => {
  
 // ========================================
 // BUTTON HANDLER — $ga take damage
-// No auth — anyone can press Take Damage
+// No auth — anyone can press Take Damage (FIX 2)
 // customId format: ga_take_{dmg}_{dmgType}_{messageId}
 // ========================================
 client.on('interactionCreate', async interaction => {
@@ -1059,7 +1070,6 @@ client.on('interactionCreate', async interaction => {
     if (parts[0] !== 'ga') return;
     
     try {
-        // parts: [ga, take, dmg, dmgType, messageId]
         const dmg = parseInt(parts[2]);
         const dmgType = parts[3];
  
@@ -1072,7 +1082,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
  
-        saveSnapshot(userId);
+        saveSnapshot(userId); // FIX 4: save snapshot so $undo works after button click
         const d = playerData.get(userId);
  
         const cascadeLines = applyDamageCascade(d, dmg, dmgType);
