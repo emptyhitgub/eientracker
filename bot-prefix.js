@@ -440,44 +440,81 @@ client.on('messageCreate', async message => {
             return;
         }
  
-        // $dmg <amount> [a|b|t] [@target]
+        // $dmg <amount> [a|b|t] [slot#...]
+        // No slots = target self; slots = target clash positions
         if (cmd === 'dmg') {
             if (!args[0] || isNaN(parseInt(args[0]))) {
-                await message.channel.send('Usage: `$dmg <amount> [a|b|t] [@target]`\n`a`=armor (default), `b`=barrier, `t`=true\nExample: `$dmg 20 a` or `$dmg 15 b @player`');
+                await message.channel.send('Usage: `$dmg <amount> [a|b|t] [slot#...]`\n`a`=armor (default), `b`=barrier, `t`=true\nExample: `$dmg 20 a 1 3` or `$dmg 15 b` (targets self)');
                 await del();
                 return;
             }
- 
+
             const dmg = parseInt(args[0]);
-            const user = message.mentions.users.first() || message.author;
-            const member = await message.guild.members.fetch(user.id);
- 
+            const typeLabelFn = (t) => t === 'armor' ? 'Armor' : t === 'barrier' ? 'Barrier' : 'True';
+
             let dmgType = 'armor';
-            if (args[1] && !args[1].startsWith('<@')) {
-                const flag = args[1].toLowerCase();
+            let slotArgs = args.slice(1);
+            if (slotArgs.length > 0 && ['a','b','t'].includes(slotArgs[0].toLowerCase())) {
+                const flag = slotArgs.shift().toLowerCase();
                 if (flag === 'b') dmgType = 'barrier';
                 else if (flag === 't') dmgType = 'true';
             }
- 
-            if (!playerData.has(user.id)) {
-                await message.channel.send(`❌ No character set for **${member.displayName}**. Use \`$set\` first.`);
+
+            const slots = slotArgs.map(s => parseInt(s)).filter(n => !isNaN(n));
+
+            if (slots.length === 0) {
+                const userId = message.author.id;
+                if (!playerData.has(userId)) {
+                    await message.channel.send('❌ No character found. Use `$set` first.');
+                    await del();
+                    return;
+                }
+                saveSnapshot(userId);
+                const d = playerData.get(userId);
+                const cascadeLines = applyDamageCascade(d, dmg, dmgType);
+                const embed = new EmbedBuilder()
+                    .setColor(0xFF6B6B)
+                    .setTitle(`💔 ${d.characterName} — ${dmg} ${typeLabelFn(dmgType)} Damage`)
+                    .setDescription(cascadeLines.join('\n'));
+                if (d.HP === 0) embed.setFooter({ text: '💀 HP reached 0!' });
+                await message.channel.send({ embeds: [embed] });
                 await del();
                 return;
             }
- 
-            saveSnapshot(user.id);
-            const d = playerData.get(user.id);
-            const cascadeLines = applyDamageCascade(d, dmg, dmgType);
- 
-            const typeLabel = dmgType === 'armor' ? 'Armor' : dmgType === 'barrier' ? 'Barrier' : 'True';
-            const embed = new EmbedBuilder()
-                .setColor(0xFF6B6B)
-                .setTitle(`💔 ${d.characterName} — ${dmg} ${typeLabel} Damage`)
-                .setDescription(cascadeLines.join('\n'));
- 
-            if (d.HP === 0) embed.setFooter({ text: '💀 HP reached 0!' });
- 
-            await message.channel.send({ embeds: [embed] });
+
+            const encounter = getEncounter(channelId);
+            if (!encounter.active) {
+                await message.channel.send('❌ No active clash in this channel. Omit slot numbers to target yourself.');
+                await del();
+                return;
+            }
+
+            const errors = [];
+            const embedObjects = [];
+            for (const slot of slots) {
+                const idx = slot - 1;
+                if (idx < 0 || idx >= encounter.combatants.length) {
+                    errors.push(`❌ No combatant in slot **${slot}**.`);
+                    continue;
+                }
+                const targetId = encounter.combatants[idx];
+                if (!playerData.has(targetId)) {
+                    errors.push(`❌ Slot **${slot}** has no character data.`);
+                    continue;
+                }
+                saveSnapshot(targetId);
+                const d = playerData.get(targetId);
+                const cascadeLines = applyDamageCascade(d, dmg, dmgType);
+                const embed = new EmbedBuilder()
+                    .setColor(0xFF6B6B)
+                    .setTitle(`💔 ${slot}. ${d.characterName} — ${dmg} ${typeLabelFn(dmgType)} Damage`)
+                    .setDescription(cascadeLines.join('\n'));
+                if (d.HP === 0) embed.setFooter({ text: '💀 HP reached 0!' });
+                embedObjects.push(embed);
+            }
+
+            if (errors.length > 0) await message.channel.send(errors.join('\n'));
+            if (embedObjects.length > 0) await message.channel.send({ embeds: embedObjects });
             await del();
             return;
         }
@@ -968,14 +1005,16 @@ client.on('messageCreate', async message => {
                 if (encounter.combatants.length === 0) { await message.channel.send('⚔️ No combatants.'); await del(); return; }
                 
                 const lines = [];
+                let num = 1;
                 for (const userId of encounter.combatants) {
                     const d = playerData.get(userId);
                     if (d) {
-                        const icon = encounter.turnsTaken.has(userId) ? '✅' : '';
-                        lines.push(`${icon} **${d.characterName}**`.trim());
+                        const icon = encounter.turnsTaken.has(userId) ? ' ✅' : '';
+                        lines.push(`**${num}.**${icon} **${d.characterName}**`);
                         lines.push(`${EMOJIS.HP} ${d.HP}/${d.maxHP} · ${EMOJIS.MP} ${d.MP}/${d.maxMP} · ${EMOJIS.IP} ${d.IP}/${d.maxIP}`);
                         lines.push(`${EMOJIS.Armor} ${d.Armor}/${d.maxArmor} · ${EMOJIS.Barrier} ${d.Barrier}/${d.maxBarrier}`);
                         lines.push('');
+                        num++;
                     }
                 }
                 
@@ -1016,12 +1055,12 @@ client.on('messageCreate', async message => {
                     },
                     { 
                         name: '🎲 GM Attack', 
-                        value: '`$ga <d1> <d2> <mod> <gate> [type]`\nExample: `$ga 10 8 15 1` or `$ga 10 8 15 1 b`\n**Types:** `a`=armor (default), `b`=barrier, `t`=true\nAnyone can click **Take Damage**.', 
+                        value: '`$ga <d1> <d2> <mod> <gate> [type]`\nExample: `$ga 10 8 15 1` or `$ga 10 8 15 1 b`\n**Types:** `a`=armor (default), `b`=barrier, `t`=true\nNo target needed — anyone in the channel can click **Take Damage**.', 
                         inline: false 
                     },
                     {
                         name: '💔 Apply Damage (Cascade)',
-                        value: '`$dmg <amount> [a|b|t] [@target]`\nApplies damage through Armor/Barrier first, overflow hits HP.\nExample: `$dmg 20 a` or `$dmg 15 b @player` or `$dmg 30 t`',
+                        value: '`$dmg <amount> [a|b|t] [slot#...]`\nApplies damage through Armor/Barrier first, overflow hits HP.\nNo slots = targets yourself. Use clash slot numbers to target others.\nExample: `$dmg 20 a 1 3` (slots 1 & 3) · `$dmg 15 b` (self) · `$dmg 30 t 2`',
                         inline: false
                     },
                     { 
@@ -1031,17 +1070,17 @@ client.on('messageCreate', async message => {
                     },
                     {
                         name: '↩️ Undo',
-                        value: '`$undo` — revert your last stat change (up to 5 deep)',
+                        value: '`$undo` — revert your last stat change (up to 5 deep)\nWorks after `$dmg`, `$hp`, `$mp`, `$ip`, `$armor`, `$barrier`, `$defend`, `$turn`, `$rest`, and clicking Take Damage.',
                         inline: false
                     },
                     {
                         name: `${EMOJIS.Overdrive} Overdrive (Shared Pool)`,
-                        value: `\`$overdrive [±amount|zero]\` — adjust or view the shared Overdrive pool (max ${MAX_OVERDRIVE})\nAlias: \`$od\`\nExample: \`$od +1\` · \`$od -2\` · \`$od zero\``,
+                        value: `\`$overdrive [±amount|zero]\` — adjust or view the shared Overdrive pool (max ${MAX_OVERDRIVE})\nAlias: \`$od\`\nExample: \`$od +1\` · \`$od -2\` · \`$od zero\`\nRequires an active clash.`,
                         inline: false
                     },
                     { 
                         name: '⚔️ Clash', 
-                        value: '`$clash start` / `$c start` — start encounter (resets Overdrive, scoped to this channel)\n`$clash join` — join yourself\n`$clash add @players` — add others\n`$clash list` — show all combatants + Overdrive\n`$clash end` — end encounter\n\n`$round` — new round (clears armor/barrier, resets turns)', 
+                        value: '`$clash start` — start encounter (resets Overdrive, isolated to this channel)\n`$clash join` — add yourself\n`$clash add @players` — add others\n`$clash list` — show numbered combatants + Overdrive\n`$clash end` — end encounter\n\n`$round` — new round (clears armor/barrier, resets turns)\n\nEach channel has its own independent clash. Use slot numbers from `$clash list` with `$dmg`.', 
                         inline: false 
                     }
                 )
