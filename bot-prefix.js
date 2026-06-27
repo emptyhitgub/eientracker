@@ -52,7 +52,7 @@ function initPlayer(userId, username) {
     }
 }
  
-// Save a snapshot of a player's current state before mutating
+// Save a snapshot of a player's current state before mutating (still error)
 function saveSnapshot(userId) {
     const d = playerData.get(userId);
     if (!d) return;
