@@ -1036,7 +1036,40 @@ client.on('messageCreate', async message => {
             await del();
             return;
         }
-        
+      //$debug
+        if (cmd === 'debug') {
+    const firstArg = args[0];
+    if (!firstArg?.includes('docs.google.com')) {
+        await message.channel.send('Usage: `$debug <sheet_url>`');
+        await del();
+        return;
+    }
+
+    const parsed = parseSheetUrl(firstArg);
+    const data = await fetchSheetData(parsed.spreadsheetId, parsed.gid);
+    if (!data) { await message.channel.send('❌ Could not fetch sheet.'); await del(); return; }
+
+    // Print first 40 rows, columns A–AE
+    const cols = 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDE'.split('');
+    let output = '';
+    for (let r = 0; r < Math.min(40, data.length); r++) {
+        for (let c = 0; c < Math.min(35, (data[r] || []).length); c++) {
+            const val = data[r][c];
+            if (val && val.trim()) {
+                const colLetter = c < 26 ? String.fromCharCode(65 + c) : 'A' + String.fromCharCode(65 + c - 26);
+                output += `${colLetter}${r + 1}=${val}  `;
+            }
+        }
+    }
+
+    // Split into chunks (Discord 2000 char limit)
+    const chunks = output.match(/.{1,1900}/g) || ['(empty)'];
+    for (const chunk of chunks) {
+        await message.channel.send('```' + chunk + '```');
+    }
+    await del();
+    return;
+}
         // $help
         if (cmd === 'help') {
             const embed = new EmbedBuilder()
