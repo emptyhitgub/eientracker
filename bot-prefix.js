@@ -1,15 +1,15 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { Pool } = require('pg');
 require('dotenv').config();
- 
+
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
- 
+
 const PREFIX = '$';
 const useDatabase = process.env.DATABASE_URL ? true : false;
 let pool;
- 
+
 if (useDatabase) {
     pool = new Pool({
         connectionString: process.env.DATABASE_URL,
@@ -19,7 +19,7 @@ if (useDatabase) {
 } else {
     console.log('⚠️ No database, using memory');
 }
- 
+
 const playerData = new Map();
 const playerHistory = new Map(); // userId -> array of snapshots (max 5)
 
@@ -37,11 +37,11 @@ function getEncounter(channelId) {
     }
     return activeEncounters.get(channelId);
 }
- 
+
 const EMOJIS = { HP: '❤️', MP: '💧', IP: '💰', Armor: '🛡️', Barrier: '✨', Overdrive: '⚡' };
 const MAX_OVERDRIVE = 12;
 const MAX_HISTORY = 5;
- 
+
 function initPlayer(userId, username) {
     if (!playerData.has(userId)) {
         playerData.set(userId, {
@@ -51,8 +51,8 @@ function initPlayer(userId, username) {
         });
     }
 }
- 
-// Save a snapshot of a player's current state before mutating (still error)
+
+// Save a snapshot of a player's current state before mutating
 function saveSnapshot(userId) {
     const d = playerData.get(userId);
     if (!d) return;
@@ -61,14 +61,14 @@ function saveSnapshot(userId) {
     history.push({ ...d });
     if (history.length > MAX_HISTORY) history.shift();
 }
- 
+
 // Restore the most recent snapshot
 function popSnapshot(userId) {
     const history = playerHistory.get(userId);
     if (!history || history.length === 0) return null;
     return history.pop();
 }
- 
+
 async function loadPlayerFromDB(userId) {
     if (!useDatabase) return null;
     try {
@@ -84,7 +84,7 @@ async function loadPlayerFromDB(userId) {
     } catch (err) { console.error('Load error:', err); }
     return null;
 }
- 
+
 async function saveCharacterSheet(userId, data) {
     if (!useDatabase) return;
     try {
@@ -96,18 +96,18 @@ async function saveCharacterSheet(userId, data) {
         `, [userId, data.username, data.characterName, data.maxHP, data.maxMP, data.maxIP, 0, 0, data.maxHP, data.maxMP, data.maxIP, data.maxArmor, data.maxBarrier, '[]']);
     } catch (err) { console.error('Save error:', err); }
 }
- 
+
 // ========================================
 // GOOGLE SHEETS IMPORT FUNCTIONS
 // ========================================
- 
+
 function parseSheetUrl(url) {
     const spreadsheetMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
     const gidMatch = url.match(/[#&?]gid=([0-9]+)/);
     if (!spreadsheetMatch) return null;
     return { spreadsheetId: spreadsheetMatch[1], gid: gidMatch ? gidMatch[1] : '0' };
 }
- 
+
 async function fetchSheetData(spreadsheetId, gid) {
     try {
         let url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
@@ -136,7 +136,7 @@ async function fetchSheetData(spreadsheetId, gid) {
         return null;
     }
 }
- 
+
 function parseCSV(csvText) {
     const lines = csvText.split('\n');
     const data = [];
@@ -146,7 +146,7 @@ function parseCSV(csvText) {
     }
     return data;
 }
- 
+
 function cellToIndex(cell) {
     const match = cell.match(/^([A-Z]+)(\d+)$/);
     if (!match) return null;
@@ -159,14 +159,14 @@ function cellToIndex(cell) {
     colIndex -= 1;
     return { row: row - 1, col: colIndex };
 }
- 
+
 function getCellValue(data, cellRef) {
     const pos = cellToIndex(cellRef);
     if (!pos || !data[pos.row]) return null;
     const value = data[pos.row][pos.col];
     return value || null;
 }
- 
+
 function parseDiceValue(value) {
     if (!value) return 0;
     const str = String(value).toLowerCase();
@@ -175,7 +175,7 @@ function parseDiceValue(value) {
     const num = parseInt(str);
     return isNaN(num) ? 0 : num;
 }
- 
+
 async function extractCharacterFromSheet(sheetUrl) {
     const parsed = parseSheetUrl(sheetUrl);
     if (!parsed) return { error: 'Invalid Google Sheets URL' };
@@ -187,11 +187,11 @@ async function extractCharacterFromSheet(sheetUrl) {
         const maxHP = (parseInt(getCellValue(data, 'Q15')) || 0) + (parseInt(getCellValue(data, 'Q17')) || 0);
         const maxMP = (parseInt(getCellValue(data, 'Q18')) || 0) + (parseInt(getCellValue(data, 'Q20')) || 0);
         const maxIP = (parseInt(getCellValue(data, 'Q21')) || 0) + (parseInt(getCellValue(data, 'Q23')) || 0);
- 
+
         const armorA = parseInt(getCellValue(data, 'AA15')) || 0;
         const armorB = parseInt(getCellValue(data, 'AA17')) || 0;
         const maxArmor = armorA + armorB || 0;
- 
+
         const barrierA = parseInt(getCellValue(data, 'AA18')) || 0;
         const barrierB = parseInt(getCellValue(data, 'AA20')) || 0;
         const maxBarrier = barrierA + barrierB || 0;
@@ -210,15 +210,15 @@ async function extractCharacterFromSheet(sheetUrl) {
         return { error: 'Error reading character data from sheet' };
     }
 }
- 
+
 // ========================================
 // DAMAGE CASCADE HELPER
 // ========================================
- 
+
 function applyDamageCascade(d, dmg, dmgType) {
     const oldArmor = d.Armor, oldBarrier = d.Barrier, oldHP = d.HP;
     const lines = [];
- 
+
     if (dmgType === 'armor') {
         if (d.Armor > 0) {
             const absorbed = Math.min(d.Armor, dmg);
@@ -254,24 +254,24 @@ function applyDamageCascade(d, dmg, dmgType) {
         lines.push(`💀 True damage bypasses defenses`);
         lines.push(`${EMOJIS.HP} HP: **${oldHP}** → **${d.HP}** (−${dmg})`);
     }
- 
+
     return lines;
 }
- 
+
 // ========================================
 // OVERDRIVE BAR HELPER
 // ========================================
 function buildOverdriveBar(current) {
     return EMOJIS.Overdrive.repeat(current) || '—';
 }
- 
+
 // ========================================
- 
+
 client.on('ready', () => {
     console.log(`✅ ${client.user.tag}`);
     console.log(`✅ Prefix: ${PREFIX}`);
 });
- 
+
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.content.startsWith(PREFIX)) return;
     
@@ -330,7 +330,7 @@ client.on('messageCreate', async message => {
                 return;
             }
             
-            if (args.length < 5 + offset) {
+            if (args.length < 6 + offset) {
                 await message.channel.send('Usage: `$set <n> <hp> <mp> <ip> <armor> <barrier>` or `$set <sheet_url>`\nExample: `$set Gandalf 100 50 100 20 15`');
                 await del();
                 return;
@@ -373,13 +373,13 @@ client.on('messageCreate', async message => {
         if (cmd === 'view') {
             const user = message.mentions.users.first() || message.author;
             const member = await message.guild.members.fetch(user.id);
- 
+
             if (!playerData.has(user.id)) {
                 await message.channel.send(`❌ No character set for **${member.displayName}**. Use \`$set\` first.`);
                 await del();
                 return;
             }
- 
+
             const d = playerData.get(user.id);
             
             const embed = new EmbedBuilder()
@@ -398,14 +398,11 @@ client.on('messageCreate', async message => {
             await del();
             return;
         }
- 
+
         // FIX 4: $undo — restore previous state
-        // Root cause was saveSnapshot not being called in button handler (ga take damage),
-        // and $undo not calling initPlayer before checking playerData.
         if (cmd === 'undo') {
             const userId = message.author.id;
 
-            // Must have a character first
             if (!playerData.has(userId)) {
                 await message.channel.send('❌ No character found. Use `$set` first.');
                 await del();
@@ -439,7 +436,7 @@ client.on('messageCreate', async message => {
             await del();
             return;
         }
- 
+
         // $dmg <amount> [a|b|t] [slot#...]
         // No slots = target self; slots = target clash positions
         if (cmd === 'dmg') {
@@ -518,42 +515,85 @@ client.on('messageCreate', async message => {
             await del();
             return;
         }
- 
+
         // $image
         if (cmd === 'image') {
             const userId = message.author.id;
             initPlayer(userId, message.member.displayName);
             const d = playerData.get(userId);
- 
+
             if (!args[0]) {
                 d.imageUrl = null;
                 await message.channel.send(`🖼️ **${d.characterName}**'s image cleared.`);
                 await del();
                 return;
             }
- 
+
             d.imageUrl = args[0];
- 
+
             const embed = new EmbedBuilder()
                 .setColor(0x00FF00)
                 .setTitle(`🖼️ ${d.characterName}`)
                 .setDescription('Image set!')
                 .setImage(args[0]);
- 
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
- 
-        // $a <d1> <d2> <mod> <gate>
+
+        // $r <d1> <d2> [mod] — simple roll: sum of both dice + mod
+        if (cmd === 'r' || cmd === 'roll') {
+            if (args.length < 2) {
+                await message.channel.send('Usage: `$r <d1> <d2> [mod]`\nExample: `$r 6 6 2` = 2d6+2');
+                await del();
+                return;
+            }
+
+            const d1 = parseInt(args[0]);
+            const d2 = parseInt(args[1]);
+            const mod = args[2] !== undefined ? parseInt(args[2]) : 0;
+
+            if (isNaN(d1) || isNaN(d2) || isNaN(mod) || d1 < 1 || d2 < 1) {
+                await message.channel.send('❌ All values must be numbers (dice at least 1).');
+                await del();
+                return;
+            }
+
+            const r1 = Math.floor(Math.random() * d1) + 1;
+            const r2 = Math.floor(Math.random() * d2) + 1;
+            const total = r1 + r2 + mod;
+
+            const embed = new EmbedBuilder()
+                .setColor(0x00BFFF)
+                .setTitle(`🎲 ${message.member.displayName} rolls`)
+                .setDescription(`d${d1}: **${r1}** + d${d2}: **${r2}**${mod !== 0 ? ` + ${mod}` : ''} = **${total}**`);
+
+            await message.channel.send({ embeds: [embed] });
+            await del();
+            return;
+        }
+
+        // $a <d1> <d2> [mod] [gate] — mod defaults 0, gate defaults 1
+        // NEW GATE RULE: miss only if BOTH dice roll at or below gate
         if (cmd === 'a' || cmd === 'attack') {
-            if (args.length < 4) {
-                await message.channel.send('Usage: `$a <d1> <d2> <mod> <gate>`');
+            if (args.length < 2) {
+                await message.channel.send('Usage: `$a <d1> <d2> [mod] [gate]`\nDefaults: mod=0, gate=1');
                 await del();
                 return;
             }
             
-            const [d1, d2, mod, gate] = [parseInt(args[0]), parseInt(args[1]), parseInt(args[2]), parseInt(args[3])];
+            const d1 = parseInt(args[0]);
+            const d2 = parseInt(args[1]);
+            const mod = args[2] !== undefined ? parseInt(args[2]) : 0;
+            const gate = args[3] !== undefined ? parseInt(args[3]) : 1;
+
+            if (isNaN(d1) || isNaN(d2) || isNaN(mod) || isNaN(gate)) {
+                await message.channel.send('❌ All values must be numbers!');
+                await del();
+                return;
+            }
+
             const userId = message.author.id;
             initPlayer(userId, message.member.displayName);
             const data = playerData.get(userId);
@@ -565,13 +605,13 @@ client.on('messageCreate', async message => {
             
             const fumble = r1 === 1 && r2 === 1;
             const crit = !fumble && r1 === r2 && r1 >= 6;
-            const hit = fumble ? false : crit ? true : (r1 > gate && r2 > gate);
+            const hit = fumble ? false : crit ? true : !(r1 <= gate && r2 <= gate);
             
             const embed = new EmbedBuilder()
                 .setColor(fumble ? 0x800000 : crit ? 0xFFD700 : hit ? 0x00FF00 : 0xFF0000)
                 .setTitle(`🎲 ${data.characterName}'s Attack`)
                 .addFields(
-                    { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: ≤${gate}`, inline: false },
+                    { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: ${gate} (miss if both ≤${gate})`, inline: false },
                     { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}**`, inline: false }
                 );
             
@@ -699,7 +739,7 @@ client.on('messageCreate', async message => {
             await del();
             return;
         }
- 
+
         // $overdrive [±amount|zero]
         if (cmd === 'overdrive' || cmd === 'od') {
             const encounter = getEncounter(channelId);
@@ -708,9 +748,9 @@ client.on('messageCreate', async message => {
                 await del();
                 return;
             }
- 
+
             const old = encounter.overdrive;
- 
+
             if (!args[0]) {
                 const embed = new EmbedBuilder()
                     .setColor(0xFFAA00)
@@ -720,7 +760,7 @@ client.on('messageCreate', async message => {
                 await del();
                 return;
             }
- 
+
             if (args[0] === 'zero') {
                 encounter.overdrive = 0;
             } else {
@@ -732,14 +772,14 @@ client.on('messageCreate', async message => {
                 }
                 encounter.overdrive = Math.max(0, Math.min(MAX_OVERDRIVE, old + delta));
             }
- 
+
             const newVal = encounter.overdrive;
             const embed = new EmbedBuilder()
                 .setColor(newVal >= MAX_OVERDRIVE ? 0xFF4400 : 0xFFAA00)
                 .setTitle(`${EMOJIS.Overdrive} Overdrive`)
                 .setDescription(`${buildOverdriveBar(newVal)}\n**${old} → ${newVal} / ${MAX_OVERDRIVE}**`)
                 .setFooter(newVal >= MAX_OVERDRIVE ? { text: '⚠️ Overdrive is maxed!' } : { text: `Changed by ${newVal - old > 0 ? '+' : ''}${newVal - old}` });
- 
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
@@ -820,7 +860,7 @@ client.on('messageCreate', async message => {
             return;
         }
         
-        // $round
+        // $round — NEW: auto +1 Overdrive
         if (cmd === 'round') {
             const encounter = getEncounter(channelId);
             if (!encounter.active) {
@@ -841,6 +881,9 @@ client.on('messageCreate', async message => {
             }
             
             encounter.turnsTaken.clear();
+
+            const oldOD = encounter.overdrive;
+            encounter.overdrive = Math.min(MAX_OVERDRIVE, encounter.overdrive + 1);
             
             const embed = new EmbedBuilder()
                 .setColor(0xFFAA00)
@@ -850,9 +893,45 @@ client.on('messageCreate', async message => {
                     { name: '🛡️ Armor', value: 'Set to **0**', inline: true },
                     { name: '✨ Barrier', value: 'Set to **0**', inline: true },
                     { name: '✅ Turns', value: 'Reset', inline: true },
-                    { name: `${EMOJIS.Overdrive} Overdrive`, value: `**${encounter.overdrive}** / ${MAX_OVERDRIVE} (unchanged)`, inline: true }
+                    { name: `${EMOJIS.Overdrive} Overdrive`, value: `${oldOD} → **${encounter.overdrive}** / ${MAX_OVERDRIVE} (+1 new round)`, inline: true }
                 );
             
+            await message.channel.send({ embeds: [embed] });
+            await del();
+            return;
+        }
+
+        // $random [count] — pick random distinct targets from clash list
+        if (cmd === 'random') {
+            const encounter = getEncounter(channelId);
+            if (!encounter.active || encounter.combatants.length === 0) {
+                await message.channel.send('❌ No active clash with combatants in this channel.');
+                await del();
+                return;
+            }
+
+            let count = parseInt(args[0]) || 1;
+            count = Math.max(1, Math.min(count, encounter.combatants.length));
+
+            // Fisher-Yates shuffle on slot indices
+            const indices = encounter.combatants.map((_, i) => i);
+            for (let i = indices.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [indices[i], indices[j]] = [indices[j], indices[i]];
+            }
+            const picked = indices.slice(0, count).sort((a, b) => a - b);
+
+            const lines = picked.map(idx => {
+                const d = playerData.get(encounter.combatants[idx]);
+                return `**${idx + 1}.** ${d ? d.characterName : 'Unknown'}`;
+            });
+
+            const embed = new EmbedBuilder()
+                .setColor(0xAA00FF)
+                .setTitle(`🎯 Random Target${count > 1 ? 's' : ''}`)
+                .setDescription(lines.join('\n'))
+                .setFooter({ text: 'Slot numbers usable with $dmg' });
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
@@ -860,6 +939,7 @@ client.on('messageCreate', async message => {
         
         // $ga <d1> <d2> <mod> <gate> [type]
         // FIX 2: targets removed — anyone can click Take Damage
+        // NEW GATE RULE: miss only if BOTH dice roll at or below gate
         if (cmd === 'ga') {
             if (args.length < 4) {
                 await message.channel.send('Usage: `$ga <d1> <d2> <mod> <gate> [type]`\n`a`=armor (default), `b`=barrier, `t`=true');
@@ -882,14 +962,14 @@ client.on('messageCreate', async message => {
             
             const fumble = r1 === 1 && r2 === 1;
             const crit = !fumble && r1 === r2 && r1 >= 6;
-            const hit = fumble ? false : crit ? true : (r1 > gate && r2 > gate);
+            const hit = fumble ? false : crit ? true : !(r1 <= gate && r2 <= gate);
             
             if (fumble || !hit) {
                 const embed = new EmbedBuilder()
                     .setColor(fumble ? 0x800000 : 0xFF0000)
                     .setTitle('🎲 GM Attack')
                     .addFields(
-                        { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: ≤${gate}`, inline: false },
+                        { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: ${gate} (miss if both ≤${gate})`, inline: false },
                         { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}**`, inline: false }
                     )
                     .setDescription(fumble ? '💀 **FUMBLE!**' : '❌ **MISS**');
@@ -904,7 +984,7 @@ client.on('messageCreate', async message => {
                 .setColor(crit ? 0xFFD700 : 0xFF6B6B)
                 .setTitle('🎲 GM Attack — HIT!')
                 .addFields(
-                    { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: ≤${gate}`, inline: false },
+                    { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: ${gate} (miss if both ≤${gate})`, inline: false },
                     { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}** ${typeLabel}`, inline: false }
                 )
                 .setDescription(crit ? '⭐ **CRITICAL!**' : '✅ **HIT!**')
@@ -1036,40 +1116,41 @@ client.on('messageCreate', async message => {
             await del();
             return;
         }
-      //$debug
+
+        //$debug
         if (cmd === 'debug') {
-    const firstArg = args[0];
-    if (!firstArg?.includes('docs.google.com')) {
-        await message.channel.send('Usage: `$debug <sheet_url>`');
-        await del();
-        return;
-    }
-
-    const parsed = parseSheetUrl(firstArg);
-    const data = await fetchSheetData(parsed.spreadsheetId, parsed.gid);
-    if (!data) { await message.channel.send('❌ Could not fetch sheet.'); await del(); return; }
-
-    // Print first 40 rows, columns A–AE
-    const cols = 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDE'.split('');
-    let output = '';
-    for (let r = 0; r < Math.min(40, data.length); r++) {
-        for (let c = 0; c < Math.min(35, (data[r] || []).length); c++) {
-            const val = data[r][c];
-            if (val && val.trim()) {
-                const colLetter = c < 26 ? String.fromCharCode(65 + c) : 'A' + String.fromCharCode(65 + c - 26);
-                output += `${colLetter}${r + 1}=${val}  `;
+            const firstArg = args[0];
+            if (!firstArg?.includes('docs.google.com')) {
+                await message.channel.send('Usage: `$debug <sheet_url>`');
+                await del();
+                return;
             }
-        }
-    }
 
-    // Split into chunks (Discord 2000 char limit)
-    const chunks = output.match(/.{1,1900}/g) || ['(empty)'];
-    for (const chunk of chunks) {
-        await message.channel.send('```' + chunk + '```');
-    }
-    await del();
-    return;
-}
+            const parsed = parseSheetUrl(firstArg);
+            const data = await fetchSheetData(parsed.spreadsheetId, parsed.gid);
+            if (!data) { await message.channel.send('❌ Could not fetch sheet.'); await del(); return; }
+
+            // Print first 40 rows, columns A–AE
+            let output = '';
+            for (let r = 0; r < Math.min(40, data.length); r++) {
+                for (let c = 0; c < Math.min(35, (data[r] || []).length); c++) {
+                    const val = data[r][c];
+                    if (val && val.trim()) {
+                        const colLetter = c < 26 ? String.fromCharCode(65 + c) : 'A' + String.fromCharCode(65 + c - 26);
+                        output += `${colLetter}${r + 1}=${val}  `;
+                    }
+                }
+            }
+
+            // Split into chunks (Discord 2000 char limit)
+            const chunks = output.match(/.{1,1900}/g) || ['(empty)'];
+            for (const chunk of chunks) {
+                await message.channel.send('```' + chunk + '```');
+            }
+            await del();
+            return;
+        }
+
         // $help
         if (cmd === 'help') {
             const embed = new EmbedBuilder()
@@ -1082,18 +1163,28 @@ client.on('messageCreate', async message => {
                         inline: false 
                     },
                     { 
+                        name: '🎲 Dice Roller', 
+                        value: '`$r <d1> <d2> [mod]` — sum of both dice + mod\nExample: `$r 6 6 2` = 2d6+2', 
+                        inline: false 
+                    },
+                    { 
                         name: '⚔️ Attack (Player)', 
-                        value: '`$a <dice1> <dice2> <modifier> <gate>`\nExample: `$a 10 8 5 1`', 
+                        value: '`$a <d1> <d2> [mod] [gate]` — mod defaults 0, gate defaults 1\nMiss only if **both** dice roll at or below gate.\nExample: `$a 10 8` or `$a 10 8 5 2`', 
                         inline: false 
                     },
                     { 
                         name: '🎲 GM Attack', 
-                        value: '`$ga <d1> <d2> <mod> <gate> [type]`\nExample: `$ga 10 8 15 1` or `$ga 10 8 15 1 b`\n**Types:** `a`=armor (default), `b`=barrier, `t`=true\nNo target needed — anyone in the channel can click **Take Damage**.', 
+                        value: '`$ga <d1> <d2> <mod> <gate> [type]`\nExample: `$ga 10 8 15 1` or `$ga 10 8 15 1 b`\nMiss only if **both** dice roll at or below gate.\n**Types:** `a`=armor (default), `b`=barrier, `t`=true\nNo target needed — anyone in the channel can click **Take Damage**.', 
                         inline: false 
                     },
                     {
                         name: '💔 Apply Damage (Cascade)',
                         value: '`$dmg <amount> [a|b|t] [slot#...]`\nApplies damage through Armor/Barrier first, overflow hits HP.\nNo slots = targets yourself. Use clash slot numbers to target others.\nExample: `$dmg 20 a 1 3` (slots 1 & 3) · `$dmg 15 b` (self) · `$dmg 30 t 2`',
+                        inline: false
+                    },
+                    {
+                        name: '🎯 Random Target',
+                        value: '`$random [count]` — pick random combatants from the clash\nExample: `$random 3` picks 3 distinct targets with slot numbers',
                         inline: false
                     },
                     { 
@@ -1113,7 +1204,7 @@ client.on('messageCreate', async message => {
                     },
                     { 
                         name: '⚔️ Clash', 
-                        value: '`$clash start` — start encounter (resets Overdrive, isolated to this channel)\n`$clash join` — add yourself\n`$clash add @players` — add others\n`$clash list` — show numbered combatants + Overdrive\n`$clash end` — end encounter\n\n`$round` — new round (clears armor/barrier, resets turns)\n\nEach channel has its own independent clash. Use slot numbers from `$clash list` with `$dmg`.', 
+                        value: '`$clash start` — start encounter (resets Overdrive, isolated to this channel)\n`$clash join` — add yourself\n`$clash add @players` — add others\n`$clash list` — show numbered combatants + Overdrive\n`$clash end` — end encounter\n\n`$round` — new round (clears armor/barrier, resets turns, **+1 Overdrive**)\n\nEach channel has its own independent clash. Use slot numbers from `$clash list` with `$dmg`.', 
                         inline: false 
                     }
                 )
@@ -1129,7 +1220,7 @@ client.on('messageCreate', async message => {
         await message.channel.send('❌ Error occurred.');
     }
 });
- 
+
 // ========================================
 // BUTTON HANDLER — $ga take damage
 // No auth — anyone can press Take Damage (FIX 2)
@@ -1144,26 +1235,26 @@ client.on('interactionCreate', async interaction => {
     try {
         const dmg = parseInt(parts[2]);
         const dmgType = parts[3];
- 
+
         const userId = interaction.user.id;
         const member = interaction.member;
         initPlayer(userId, member.displayName);
- 
+
         if (!playerData.has(userId)) {
             await interaction.reply({ content: '❌ No character found. Use `$set` first.', ephemeral: true });
             return;
         }
- 
+
         saveSnapshot(userId); // FIX 4: save snapshot so $undo works after button click
         const d = playerData.get(userId);
- 
+
         const cascadeLines = applyDamageCascade(d, dmg, dmgType);
- 
+
         const embed = new EmbedBuilder()
             .setColor(0xFF6B6B)
             .setTitle(`💔 ${d.characterName} — Took the hit!`)
             .setDescription(cascadeLines.join('\n'));
- 
+
         if (d.HP === 0) embed.setFooter({ text: '💀 HP reached 0!' });
         
         await interaction.reply({ embeds: [embed] });
@@ -1172,5 +1263,5 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply({ content: '❌ Error', ephemeral: true });
     }
 });
- 
+
 client.login(process.env.DISCORD_TOKEN);
