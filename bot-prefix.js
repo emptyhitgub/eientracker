@@ -32,7 +32,8 @@ function getEncounter(channelId) {
             active: false,
             combatants: [],
             turnsTaken: new Set(),
-            overdrive: 0
+            overdrive: 0,
+            pets: [] // { ownerId, name, HP, MP, maxHP, maxMP }
         });
     }
     return activeEncounters.get(channelId);
@@ -458,8 +459,11 @@ client.on('messageCreate', async message => {
             }
 
             const slots = slotArgs.map(s => parseInt(s)).filter(n => !isNaN(n));
+            const petSlots = slotArgs
+                .filter(s => /^[a-z]$/i.test(s) && isNaN(parseInt(s)))
+                .map(s => s.toLowerCase().charCodeAt(0) - 97);
 
-            if (slots.length === 0) {
+            if (slots.length === 0 && petSlots.length === 0) {
                 const userId = message.author.id;
                 if (!playerData.has(userId)) {
                     await message.channel.send('❌ No character found. Use `$set` first.');
@@ -507,6 +511,25 @@ client.on('messageCreate', async message => {
                     .setTitle(`💔 ${slot}. ${d.characterName} — ${dmg} ${typeLabelFn(dmgType)} Damage`)
                     .setDescription(cascadeLines.join('\n'));
                 if (d.HP === 0) embed.setFooter({ text: '💀 HP reached 0!' });
+                embedObjects.push(embed);
+            }
+
+            // Pet targets — no Armor/Barrier, all damage hits HP directly
+            const pets = encounter.pets || [];
+            for (const idx of petSlots) {
+                const letter = String.fromCharCode(97 + idx);
+                if (idx < 0 || idx >= pets.length) {
+                    errors.push(`❌ No pet in slot **${letter}**.`);
+                    continue;
+                }
+                const pet = pets[idx];
+                const oldHP = pet.HP;
+                pet.HP = Math.max(0, pet.HP - dmg);
+                const embed = new EmbedBuilder()
+                    .setColor(0xFF6B6B)
+                    .setTitle(`💔 ${letter}. ${pet.name} — ${dmg} Damage`)
+                    .setDescription(`🐾 Pets have no Armor/Barrier — hits HP directly\n${EMOJIS.HP} HP: **${oldHP}** → **${pet.HP}** (−${dmg})`);
+                if (pet.HP === 0) embed.setFooter({ text: '💀 HP reached 0!' });
                 embedObjects.push(embed);
             }
 
@@ -564,10 +587,19 @@ client.on('messageCreate', async message => {
             const r2 = Math.floor(Math.random() * d2) + 1;
             const total = r1 + r2 + mod;
 
+            const fumble = r1 === 1 && r2 === 1;
+            const crit = !fumble && r1 === r2 && r1 >= 6;
+
             const embed = new EmbedBuilder()
-                .setColor(0x00BFFF)
-                .setTitle(`🎲 ${message.member.displayName} rolls`)
-                .setDescription(`d${d1}: **${r1}** + d${d2}: **${r2}**${mod !== 0 ? ` + ${mod}` : ''} = **${total}**`);
+                .setColor(fumble ? 0x800000 : crit ? 0xFFD700 : 0x00BFFF)
+                .setTitle(`🎲 ${message.member.displayName}'s Roll`)
+                .addFields(
+                    { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}**`, inline: false },
+                    { name: 'Total', value: `${r1} + ${r2}${mod !== 0 ? ` + ${mod}` : ''} = **${total}**`, inline: false }
+                );
+
+            if (fumble) embed.setDescription('💀 **FUMBLE!**');
+            else if (crit) embed.setDescription('⭐ **CRITICAL!**');
 
             await message.channel.send({ embeds: [embed] });
             await del();
@@ -611,7 +643,7 @@ client.on('messageCreate', async message => {
                 .setColor(fumble ? 0x800000 : crit ? 0xFFD700 : hit ? 0x00FF00 : 0xFF0000)
                 .setTitle(`🎲 ${data.characterName}'s Attack`)
                 .addFields(
-                    { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: ${gate} (miss if both ≤${gate})`, inline: false },
+                    { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: **${gate}** (miss if both ≤**${gate}**)`, inline: false },
                     { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}**`, inline: false }
                 );
             
@@ -936,6 +968,133 @@ client.on('messageCreate', async message => {
             await del();
             return;
         }
+
+        // $pet — pets live in the clash, listed at the bottom with letters
+        // $pet join <hp> <mp> [name] · $pet hp <±|full|zero> · $pet mp <±|full|zero> · $pet leave · $pet (view)
+        if (cmd === 'pet') {
+            const encounter = getEncounter(channelId);
+            if (!encounter.active) {
+                await message.channel.send('❌ No active clash. Use `$clash start` first.');
+                await del();
+                return;
+            }
+            if (!encounter.pets) encounter.pets = [];
+
+            const userId = message.author.id;
+            initPlayer(userId, message.member.displayName);
+            const ownerName = playerData.get(userId).characterName;
+            const myPet = encounter.pets.find(p => p.ownerId === userId);
+            const sub = args[0]?.toLowerCase();
+
+            if (sub === 'join') {
+                if (myPet) {
+                    await message.channel.send(`❌ You already have **${myPet.name}** in this clash. Use \`$pet leave\` first.`);
+                    await del();
+                    return;
+                }
+                const hp = parseInt(args[1]);
+                const mp = parseInt(args[2]);
+                if (isNaN(hp) || isNaN(mp)) {
+                    await message.channel.send('Usage: `$pet join <hp> <mp> [name]`\nExample: `$pet join 30 10 Fluffy`');
+                    await del();
+                    return;
+                }
+                const name = args.slice(3).join(' ') || `${ownerName}'s Pet`;
+
+                encounter.pets.push({ ownerId: userId, name, HP: hp, MP: mp, maxHP: hp, maxMP: mp });
+                const letter = String.fromCharCode(97 + encounter.pets.length - 1);
+
+                const embed = new EmbedBuilder()
+                    .setColor(0x00FF00)
+                    .setTitle(`🐾 ${name} joined the clash!`)
+                    .addFields(
+                        { name: `${EMOJIS.HP} HP`, value: `${hp}/${hp}`, inline: true },
+                        { name: `${EMOJIS.MP} MP`, value: `${mp}/${mp}`, inline: true }
+                    )
+                    .setFooter({ text: `Slot ${letter} · owner: ${ownerName}` });
+
+                await message.channel.send({ embeds: [embed] });
+                await del();
+                return;
+            }
+
+            if (sub === 'leave') {
+                if (!myPet) {
+                    await message.channel.send('❌ You have no pet in this clash.');
+                    await del();
+                    return;
+                }
+                encounter.pets = encounter.pets.filter(p => p.ownerId !== userId);
+                await message.channel.send(`🐾 **${myPet.name}** left the clash.`);
+                await del();
+                return;
+            }
+
+            if (sub === 'hp' || sub === 'mp') {
+                if (!myPet) {
+                    await message.channel.send('❌ You have no pet. Use `$pet join <hp> <mp>` first.');
+                    await del();
+                    return;
+                }
+                if (!args[1]) {
+                    await message.channel.send(`Usage: \`$pet ${sub} <±amount|full|zero>\``);
+                    await del();
+                    return;
+                }
+
+                const key = sub === 'hp' ? 'HP' : 'MP';
+                const maxKey = sub === 'hp' ? 'maxHP' : 'maxMP';
+                const emoji = sub === 'hp' ? EMOJIS.HP : EMOJIS.MP;
+                const old = myPet[key];
+
+                if (args[1] === 'full') myPet[key] = myPet[maxKey];
+                else if (args[1] === 'zero') myPet[key] = 0;
+                else {
+                    const delta = parseInt(args[1]);
+                    if (isNaN(delta)) {
+                        await message.channel.send(`Usage: \`$pet ${sub} <±amount|full|zero>\``);
+                        await del();
+                        return;
+                    }
+                    myPet[key] = Math.max(0, myPet[key] + delta);
+                }
+
+                const embed = new EmbedBuilder()
+                    .setColor(myPet[key] > old ? 0x00FF00 : 0xFF6B6B)
+                    .setTitle(`🐾 ${myPet.name}`)
+                    .addFields({ name: `${emoji} ${key}`, value: `${old} → **${myPet[key]}**/${myPet[maxKey]}`, inline: true });
+                if (sub === 'hp' && myPet.HP === 0) embed.setFooter({ text: '💀 HP reached 0!' });
+
+                await message.channel.send({ embeds: [embed] });
+                await del();
+                return;
+            }
+
+            // No subcommand — view own pet
+            if (!sub) {
+                if (!myPet) {
+                    await message.channel.send('❌ You have no pet. Use `$pet join <hp> <mp> [name]`');
+                    await del();
+                    return;
+                }
+                const letter = String.fromCharCode(97 + encounter.pets.indexOf(myPet));
+                const embed = new EmbedBuilder()
+                    .setColor(0x0099FF)
+                    .setTitle(`🐾 ${myPet.name}`)
+                    .addFields(
+                        { name: `${EMOJIS.HP} HP`, value: `${myPet.HP}/${myPet.maxHP}`, inline: true },
+                        { name: `${EMOJIS.MP} MP`, value: `${myPet.MP}/${myPet.maxMP}`, inline: true }
+                    )
+                    .setFooter({ text: `Slot ${letter} · owner: ${ownerName}` });
+                await message.channel.send({ embeds: [embed] });
+                await del();
+                return;
+            }
+
+            await message.channel.send('Usage: `$pet join <hp> <mp> [name]` · `$pet hp <±|full|zero>` · `$pet mp <±|full|zero>` · `$pet leave` · `$pet` (view)');
+            await del();
+            return;
+        }
         
         // $ga <d1> <d2> <mod> <gate> [type]
         // FIX 2: targets removed — anyone can click Take Damage
@@ -969,7 +1128,7 @@ client.on('messageCreate', async message => {
                     .setColor(fumble ? 0x800000 : 0xFF0000)
                     .setTitle('🎲 GM Attack')
                     .addFields(
-                        { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: ${gate} (miss if both ≤${gate})`, inline: false },
+                        { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: **${gate}** (miss if both ≤**${gate}**)`, inline: false },
                         { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}**`, inline: false }
                     )
                     .setDescription(fumble ? '💀 **FUMBLE!**' : '❌ **MISS**');
@@ -984,7 +1143,7 @@ client.on('messageCreate', async message => {
                 .setColor(crit ? 0xFFD700 : 0xFF6B6B)
                 .setTitle('🎲 GM Attack — HIT!')
                 .addFields(
-                    { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: ${gate} (miss if both ≤${gate})`, inline: false },
+                    { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: **${gate}** (miss if both ≤**${gate}**)`, inline: false },
                     { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}** ${typeLabel}`, inline: false }
                 )
                 .setDescription(crit ? '⭐ **CRITICAL!**' : '✅ **HIT!**')
@@ -1012,6 +1171,7 @@ client.on('messageCreate', async message => {
                 encounter.combatants = [];
                 encounter.turnsTaken = new Set();
                 encounter.overdrive = 0;
+                encounter.pets = [];
                 await message.channel.send(`⚔️ Clash started! ${EMOJIS.Overdrive} Overdrive reset to 0.`);
                 await del();
                 return;
@@ -1022,6 +1182,7 @@ client.on('messageCreate', async message => {
                 encounter.combatants = [];
                 encounter.turnsTaken = new Set();
                 encounter.overdrive = 0;
+                encounter.pets = [];
                 await message.channel.send('✅ Clash ended!');
                 await del();
                 return;
@@ -1097,6 +1258,19 @@ client.on('messageCreate', async message => {
                         num++;
                     }
                 }
+
+                // Pets — always at the bottom, lettered a/b/c
+                const pets = encounter.pets || [];
+                if (pets.length > 0) {
+                    lines.push('🐾 **Pets**');
+                    pets.forEach((pet, i) => {
+                        const letter = String.fromCharCode(97 + i); // a, b, c...
+                        const owner = playerData.get(pet.ownerId);
+                        lines.push(`**${letter}.** **${pet.name}**${owner ? ` (${owner.characterName})` : ''}`);
+                        lines.push(`${EMOJIS.HP} ${pet.HP}/${pet.maxHP} · ${EMOJIS.MP} ${pet.MP}/${pet.maxMP}`);
+                        lines.push('');
+                    });
+                }
                 
                 const embed = new EmbedBuilder()
                     .setColor(0xFFAA00)
@@ -1164,8 +1338,13 @@ client.on('messageCreate', async message => {
                     },
                     { 
                         name: '🎲 Dice Roller', 
-                        value: '`$r <d1> <d2> [mod]` — sum of both dice + mod\nExample: `$r 6 6 2` = 2d6+2', 
+                        value: '`$r <d1> <d2> [mod]` — sum of both dice + mod\nFumbles and criticals apply.\nExample: `$r 6 6 2` = 2d6+2', 
                         inline: false 
+                    },
+                    {
+                        name: '🐾 Pet',
+                        value: '`$pet join <hp> <mp> [name]` — add your pet to the clash (listed at the bottom as a/b/c)\n`$pet hp <±|full|zero>` · `$pet mp <±|full|zero>` — adjust\n`$pet` — view · `$pet leave` — remove\nExample: `$pet join 30 10 Fluffy` · `$pet hp -10`',
+                        inline: false
                     },
                     { 
                         name: '⚔️ Attack (Player)', 
@@ -1179,7 +1358,7 @@ client.on('messageCreate', async message => {
                     },
                     {
                         name: '💔 Apply Damage (Cascade)',
-                        value: '`$dmg <amount> [a|b|t] [slot#...]`\nApplies damage through Armor/Barrier first, overflow hits HP.\nNo slots = targets yourself. Use clash slot numbers to target others.\nExample: `$dmg 20 a 1 3` (slots 1 & 3) · `$dmg 15 b` (self) · `$dmg 30 t 2`',
+                        value: '`$dmg <amount> [a|b|t] [slot#/letter...]`\nApplies damage through Armor/Barrier first, overflow hits HP.\nNo slots = targets yourself. Numbers target players, letters target pets (HP directly).\n⚠️ When targeting pets, always include the type flag first: `$dmg 20 a a` hits pet **a** with armor damage.\nExample: `$dmg 20 a 1 3` · `$dmg 15 b` (self) · `$dmg 10 t a b` (pets a & b)',
                         inline: false
                     },
                     {
