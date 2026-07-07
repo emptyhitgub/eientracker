@@ -205,9 +205,11 @@ function resolveDie(token, d) {
     return parseInt(token);
 }
 
-// Label prefix for dice display when a stat letter was used ('F ' / 'G ' / '')
-function dieLabel(token) {
-    if (token && STAT_KEYS[token.toLowerCase()]) return token.toUpperCase() + ' ';
+// Label prefix for dice display when a stat letter was used ('F ' / 'G🔼 ' / '')
+function dieLabel(token, d) {
+    if (token && STAT_KEYS[token.toLowerCase()]) {
+        return token.toUpperCase() + statArrow(d, STAT_KEYS[token.toLowerCase()]) + ' ';
+    }
     return '';
 }
 
@@ -747,7 +749,7 @@ client.on('messageCreate', async message => {
                 .setTitle(`🎲 ${data.characterName}'s Roll`)
                 .setThumbnail(data.imageUrl || null)
                 .addFields(
-                    { name: 'Dice', value: `${dieLabel(args[0])}d${d1}: **${r1}** | ${dieLabel(args[1])}d${d2}: **${r2}**`, inline: false },
+                    { name: 'Dice', value: `${dieLabel(args[0], data)}d${d1}: **${r1}** | ${dieLabel(args[1], data)}d${d2}: **${r2}**`, inline: false },
                     { name: 'Total', value: `${r1} + ${r2}${mod !== 0 ? ` + ${mod}` : ''} = **${total}**`, inline: false }
                 );
 
@@ -796,7 +798,7 @@ client.on('messageCreate', async message => {
                 .setTitle(`🎲 ${data.characterName}'s Attack`)
                 .setThumbnail(data.imageUrl || null)
                 .addFields(
-                    { name: 'Dice', value: `${dieLabel(args[0])}d${d1}: **${r1}** | ${dieLabel(args[1])}d${d2}: **${r2}** = **${r1 + r2}**\nGate: **${gate}** (miss if both ≤**${gate}**)`, inline: false },
+                    { name: 'Dice', value: `${dieLabel(args[0], data)}d${d1}: **${r1}** | ${dieLabel(args[1], data)}d${d2}: **${r2}** = **${r1 + r2}**\nGate: **${gate}** (miss if both ≤**${gate}**)`, inline: false },
                     { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}**`, inline: false }
                 );
             
@@ -1096,6 +1098,7 @@ client.on('messageCreate', async message => {
             d.MP = d.maxMP;
             d.Armor = 0;
             d.Barrier = 0;
+            d.statMods = {};
             savePlayerState(userId);
             
             const embed = new EmbedBuilder()
@@ -1670,7 +1673,7 @@ client.on('messageCreate', async message => {
                     },
                     { 
                         name: '💉 Resources', 
-                        value: '`$hp`, `$mp`, `$ip`, `$armor`, `$barrier` — use `±amount`, `full`, or `zero`\nExample: `$hp -20` · `$mp +50` · `$armor full`\n\n`$defend` or `$d` — add max armor+barrier\n`$turn [@player]` — clear armor+barrier to 0\n`$rest` — HP/MP to max, armor/barrier to 0', 
+                        value: '`$hp`, `$mp`, `$ip`, `$armor`, `$barrier` — use `±amount`, `full`, or `zero`\nExample: `$hp -20` · `$mp +50` · `$armor full`\n\n`$defend` or `$d` — add max armor+barrier\n`$turn [@player]` — clear armor+barrier to 0\n`$rest` — HP/MP to max, armor/barrier to 0, buffs reset', 
                         inline: false 
                     },
                     {
