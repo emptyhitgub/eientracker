@@ -175,6 +175,42 @@ function checkFirstCrisis(channelId, userId, d) {
     return `⚡ **First crisis this Clash** — the party gains **1 Overdrive**! (\`$od +1\`)`;
 }
 
+// ========================================
+// ATTRIBUTE STAT HELPERS
+// Stats are die sizes (d6–d12). Up/down shift by one size (±2), clamped 6–12.
+// Buffs live in memory only (scene-scoped) — base stats are what persists.
+// ========================================
+const STAT_KEYS = { f: 'force', m: 'mind', g: 'grace', s: 'soul', h: 'heart' };
+const STAT_MIN = 6, STAT_MAX = 12;
+
+function effectiveStat(d, key) {
+    if (!d.stats || !d.stats[key]) return null;
+    const mod = (d.statMods && d.statMods[key]) || 0;
+    return Math.max(STAT_MIN, Math.min(STAT_MAX, d.stats[key] + mod));
+}
+
+function statArrow(d, key) {
+    const mod = (d.statMods && d.statMods[key]) || 0;
+    return mod > 0 ? '🔼' : mod < 0 ? '🔻' : '';
+}
+
+// Resolve a dice token: stat letter (f/m/g/s/h) -> effective stat die, otherwise plain number
+function resolveDie(token, d) {
+    if (!token) return NaN;
+    const t = token.toLowerCase();
+    if (STAT_KEYS[t]) {
+        const v = effectiveStat(d, STAT_KEYS[t]);
+        return v || NaN;
+    }
+    return parseInt(token);
+}
+
+// Label prefix for dice display when a stat letter was used ('F ' / 'G ' / '')
+function dieLabel(token) {
+    if (token && STAT_KEYS[token.toLowerCase()]) return token.toUpperCase() + ' ';
+    return '';
+}
+
 // Memory first, then DB, then fresh defaults — replaces bare initPlayer in commands
 async function ensurePlayer(userId, username) {
     if (playerData.has(userId)) return playerData.get(userId);
@@ -495,7 +531,8 @@ client.on('messageCreate', async message => {
                 );
 
             if (d.stats) {
-                embed.addFields({ name: '📊 Base Stats', value: `FORCE: ${d.stats.force} | MIND: ${d.stats.mind} | GRACE: ${d.stats.grace}\nSOUL: ${d.stats.soul} | HEART: ${d.stats.heart}`, inline: false });
+                const sv = (k) => `${effectiveStat(d, k)}${statArrow(d, k)}`;
+                embed.addFields({ name: '📊 Stats', value: `FORCE: ${sv('force')} | MIND: ${sv('mind')} | GRACE: ${sv('grace')}\nSOUL: ${sv('soul')} | HEART: ${sv('heart')}`, inline: false });
             }
             
             await message.channel.send({ embeds: [embed] });
@@ -680,23 +717,23 @@ client.on('messageCreate', async message => {
         // $r <d1> <d2> [mod] — simple roll: sum of both dice + mod
         if (cmd === 'r' || cmd === 'roll') {
             if (args.length < 2) {
-                await message.channel.send('Usage: `$r <d1> <d2> [mod]`\nExample: `$r 6 6 2` = 2d6+2');
-                await del();
-                return;
-            }
-
-            const d1 = parseInt(args[0]);
-            const d2 = parseInt(args[1]);
-            const mod = args[2] !== undefined ? parseInt(args[2]) : 0;
-
-            if (isNaN(d1) || isNaN(d2) || isNaN(mod) || d1 < 1 || d2 < 1) {
-                await message.channel.send('❌ All values must be numbers (dice at least 1).');
+                await message.channel.send('Usage: `$r <d1|stat> <d2|stat> [mod]`\nStats: `f m g s h` (needs imported sheet)\nExample: `$r 6 6 2` = 2d6+2 · `$r f g 3`');
                 await del();
                 return;
             }
 
             const userId = message.author.id;
             const data = await ensurePlayer(userId, message.member.displayName);
+
+            const d1 = resolveDie(args[0], data);
+            const d2 = resolveDie(args[1], data);
+            const mod = args[2] !== undefined ? parseInt(args[2]) : 0;
+
+            if (isNaN(d1) || isNaN(d2) || isNaN(mod) || d1 < 1 || d2 < 1) {
+                await message.channel.send('❌ Dice must be numbers or stat letters (`f m g s h` — stat letters need an imported sheet with `$set <url>`).');
+                await del();
+                return;
+            }
 
             const r1 = Math.floor(Math.random() * d1) + 1;
             const r2 = Math.floor(Math.random() * d2) + 1;
@@ -710,7 +747,7 @@ client.on('messageCreate', async message => {
                 .setTitle(`🎲 ${data.characterName}'s Roll`)
                 .setThumbnail(data.imageUrl || null)
                 .addFields(
-                    { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}**`, inline: false },
+                    { name: 'Dice', value: `${dieLabel(args[0])}d${d1}: **${r1}** | ${dieLabel(args[1])}d${d2}: **${r2}**`, inline: false },
                     { name: 'Total', value: `${r1} + ${r2}${mod !== 0 ? ` + ${mod}` : ''} = **${total}**`, inline: false }
                 );
 
@@ -726,25 +763,24 @@ client.on('messageCreate', async message => {
         // NEW GATE RULE: miss only if BOTH dice roll at or below gate
         if (cmd === 'a' || cmd === 'attack') {
             if (args.length < 2) {
-                await message.channel.send('Usage: `$a <d1> <d2> [mod] [gate]`\nDefaults: mod=0, gate=1');
-                await del();
-                return;
-            }
-            
-            const d1 = parseInt(args[0]);
-            const d2 = parseInt(args[1]);
-            const mod = args[2] !== undefined ? parseInt(args[2]) : 0;
-            const gate = args[3] !== undefined ? parseInt(args[3]) : 1;
-
-            if (isNaN(d1) || isNaN(d2) || isNaN(mod) || isNaN(gate)) {
-                await message.channel.send('❌ All values must be numbers!');
+                await message.channel.send('Usage: `$a <d1|stat> <d2|stat> [mod] [gate]`\nStats: `f m g s h` (needs imported sheet)\nDefaults: mod=0, gate=1\nExample: `$a f g 5 2`');
                 await del();
                 return;
             }
 
             const userId = message.author.id;
-            await ensurePlayer(userId, message.member.displayName);
-            const data = playerData.get(userId);
+            const data = await ensurePlayer(userId, message.member.displayName);
+
+            const d1 = resolveDie(args[0], data);
+            const d2 = resolveDie(args[1], data);
+            const mod = args[2] !== undefined ? parseInt(args[2]) : 0;
+            const gate = args[3] !== undefined ? parseInt(args[3]) : 1;
+
+            if (isNaN(d1) || isNaN(d2) || isNaN(mod) || isNaN(gate)) {
+                await message.channel.send('❌ Dice must be numbers or stat letters (`f m g s h` — stat letters need an imported sheet with `$set <url>`).');
+                await del();
+                return;
+            }
             
             const r1 = Math.floor(Math.random() * d1) + 1;
             const r2 = Math.floor(Math.random() * d2) + 1;
@@ -760,7 +796,7 @@ client.on('messageCreate', async message => {
                 .setTitle(`🎲 ${data.characterName}'s Attack`)
                 .setThumbnail(data.imageUrl || null)
                 .addFields(
-                    { name: 'Dice', value: `d${d1}: **${r1}** | d${d2}: **${r2}** = **${r1 + r2}**\nGate: **${gate}** (miss if both ≤**${gate}**)`, inline: false },
+                    { name: 'Dice', value: `${dieLabel(args[0])}d${d1}: **${r1}** | ${dieLabel(args[1])}d${d2}: **${r2}** = **${r1 + r2}**\nGate: **${gate}** (miss if both ≤**${gate}**)`, inline: false },
                     { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}**`, inline: false }
                 );
             
@@ -890,6 +926,68 @@ client.on('messageCreate', async message => {
                 .setTitle(d.characterName)
                 .addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${old} → **${d.Barrier}**/${d.maxBarrier}`, inline: true });
             
+            await message.channel.send({ embeds: [embed] });
+            await del();
+            return;
+        }
+
+        // $f / $m / $g / $s / $h — attribute buff/debuff
+        // up: +1 die size (+2, max d12) · down: -1 die size (-2, min d6) · base: reset · no arg: view
+        if (STAT_KEYS[cmd]) {
+            const key = STAT_KEYS[cmd];
+            const userId = message.author.id;
+            const d = await ensurePlayer(userId, message.member.displayName);
+
+            if (!d.stats || !d.stats[key]) {
+                await message.channel.send('❌ No stats found — import your character sheet with `$set <sheet_url>` first.');
+                await del();
+                return;
+            }
+
+            if (!d.statMods) d.statMods = {};
+            const base = d.stats[key];
+            const oldVal = effectiveStat(d, key);
+            const sub = args[0]?.toLowerCase();
+            const label = key.toUpperCase();
+
+            if (!sub) {
+                const embed = new EmbedBuilder()
+                    .setColor(0x0099FF)
+                    .setTitle(`📊 ${d.characterName} — ${label}`)
+                    .setDescription(`Current: **d${oldVal}**${statArrow(d, key)}${oldVal !== base ? ` (base d${base})` : ''}`);
+                await message.channel.send({ embeds: [embed] });
+                await del();
+                return;
+            }
+
+            if (sub === 'up') {
+                if (oldVal >= STAT_MAX) {
+                    await message.channel.send(`❌ **${label}** is already at max (**d${STAT_MAX}**).`);
+                    await del();
+                    return;
+                }
+                d.statMods[key] = ((d.statMods[key] || 0)) + 2;
+            } else if (sub === 'down') {
+                if (oldVal <= STAT_MIN) {
+                    await message.channel.send(`❌ **${label}** is already at min (**d${STAT_MIN}**).`);
+                    await del();
+                    return;
+                }
+                d.statMods[key] = ((d.statMods[key] || 0)) - 2;
+            } else if (sub === 'base') {
+                d.statMods[key] = 0;
+            } else {
+                await message.channel.send(`Usage: \`$${cmd} <up|down|base>\` — or \`$${cmd}\` alone to view`);
+                await del();
+                return;
+            }
+
+            const newVal = effectiveStat(d, key);
+            const embed = new EmbedBuilder()
+                .setColor(newVal > oldVal ? 0x00FF00 : newVal < oldVal ? 0xFF6B6B : 0xAAAAAA)
+                .setTitle(`📊 ${d.characterName} — ${label}`)
+                .setDescription(`d${oldVal} → **d${newVal}**${statArrow(d, key)}${newVal !== base ? ` (base d${base})` : ' (at base)'}`);
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
@@ -1323,13 +1421,18 @@ client.on('messageCreate', async message => {
             }
             
             if (sub === 'end') {
+                // Wipe stat buffs/debuffs for everyone in the clash (scene-scoped)
+                for (const userId of encounter.combatants) {
+                    const d = playerData.get(userId);
+                    if (d && d.statMods) d.statMods = {};
+                }
                 encounter.active = false;
                 encounter.combatants = [];
                 encounter.turnsTaken = new Set();
                 encounter.overdrive = 0;
                 encounter.pets = [];
                 encounter.crisisTriggered = new Set();
-                await message.channel.send('✅ Clash ended!');
+                await message.channel.send('✅ Clash ended! All stat buffs/debuffs reset to base.');
                 await del();
                 return;
             }
@@ -1532,8 +1635,13 @@ client.on('messageCreate', async message => {
                     },
                     { 
                         name: '🎲 Dice Roller', 
-                        value: '`$r <d1> <d2> [mod]` — sum of both dice + mod\nFumbles and criticals apply.\nExample: `$r 6 6 2` = 2d6+2', 
+                        value: '`$r <d1|stat> <d2|stat> [mod]` — sum of both dice + mod\nUse stat letters `f m g s h` to roll your attribute dice.\nFumbles and criticals apply.\nExample: `$r 6 6 2` = 2d6+2 · `$r f g 3`', 
                         inline: false 
+                    },
+                    {
+                        name: '📊 Attribute Buffs',
+                        value: '`$f` `$m` `$g` `$s` `$h` + `up`/`down`/`base`\n`up` = +1 die size (max d12) · `down` = −1 die size (min d6) · `base` = reset\nBuffed stats show 🔼/🔻 on `$view`. All buffs auto-reset on `$clash end` (scene-scoped).\nExample: `$f up` · `$g down` · `$m base`',
+                        inline: false
                     },
                     {
                         name: '🐾 Pet',
@@ -1542,7 +1650,7 @@ client.on('messageCreate', async message => {
                     },
                     { 
                         name: '⚔️ Attack (Player)', 
-                        value: '`$a <d1> <d2> [mod] [gate]` — mod defaults 0, gate defaults 1\nMiss only if **both** dice roll at or below gate.\nExample: `$a 10 8` or `$a 10 8 5 2`', 
+                        value: '`$a <d1|stat> <d2|stat> [mod] [gate]` — mod defaults 0, gate defaults 1\nUse stat letters `f m g s h` to roll your attribute dice (buffs included).\nMiss only if **both** dice roll at or below gate.\nExample: `$a 10 8` · `$a f g 5 2`', 
                         inline: false 
                     },
                     { 
