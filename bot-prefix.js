@@ -1691,7 +1691,7 @@ client.on('messageCreate', async message => {
                 const embed = new EmbedBuilder()
                     .setColor(0x9B59B6)
                     .setTitle(`🪄 ${s.name}`)
-                    .setDescription(`*${s.source} · offensive casts use ${s.attribute} and require an arcane weapon*`);
+                    .setDescription(`*${s.source} · offensive casts use ${s.attribute}*`);
                 for (const c of s.casts) embed.addFields(castField(c));
                 await message.channel.send({ embeds: [embed] });
                 await del();
