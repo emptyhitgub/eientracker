@@ -1,0 +1,82 @@
+{
+  "white": {
+    "name": "White Magic",
+    "source": "Acolyte",
+    "attribute": "【H+S】",
+    "casts": [
+      { "name": "Cure", "ap": "❯", "mp": 5, "target": "Creature", "duration": "Instantaneous", "offensive": false, "damage": null, "require": null, "effect": "Heal 35 HP." },
+      { "name": "Curing Wave", "ap": "❯❯", "mp": 10, "target": "Row", "duration": "Instantaneous", "offensive": false, "damage": null, "require": "Cure", "effect": "Heal 30 HP." },
+      { "name": "Cure All", "ap": "❯❯❯", "mp": 15, "target": "All Allies", "duration": "Instantaneous", "offensive": false, "damage": null, "require": "Cure", "effect": "Heal 30 HP." },
+      { "name": "Purify", "ap": "❯", "mp": 10, "target": "Creature", "duration": "Instantaneous", "offensive": false, "damage": null, "require": null, "effect": "Clear all status effects." },
+      { "name": "Smite", "ap": "❯", "mp": 5, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+20", "require": null, "effect": "Deal light damage." },
+      { "name": "Radiance", "ap": "❯", "mp": 15, "target": "Row", "duration": "Instantaneous", "offensive": true, "damage": "HR+15", "require": "Smite", "effect": "Deal light damage." },
+      { "name": "Blinding Light", "ap": "❯", "mp": 10, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+10", "require": "Smite", "effect": "Deal light damage and inflict Blind 2 (against Soul)." },
+      { "name": "Spiritbind", "ap": "❯", "mp": 5, "target": "Creature", "duration": "Scene", "offensive": false, "damage": null, "require": "Cure", "effect": "Bind a creature. While bound, whenever you heal any other creature, it also regains half of that healing (choose one instance if the healing hits multiple creatures). Lasts until the scene ends or you recast Spiritbind." },
+      { "name": "Uplift", "ap": "❯", "mp": 10, "target": "Willing Creature", "duration": "Scene", "offensive": false, "damage": null, "require": null, "effect": "Give Soul🔼." },
+      { "name": "Radiant Burst", "ap": "❯❯❯", "mp": 20, "target": "All Enemies", "duration": "Scene", "offensive": true, "damage": "HR+25", "require": "Radiance", "effect": "Deal light damage." }
+    ]
+  },
+  "evocation": {
+    "name": "Evocation",
+    "source": "Evoker",
+    "attribute": "【M+S】",
+    "casts": [
+      { "name": "Flame", "ap": "❯", "mp": 10, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+25", "require": null, "effect": "Deal fire damage." },
+      { "name": "Frostbite", "ap": "❯", "mp": 10, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+15", "require": null, "effect": "Deal ice damage and inflict Slow 2 (against Grace)." },
+      { "name": "Zap", "ap": "❯", "mp": 10, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+10", "require": null, "effect": "Deal bolt damage and inflict Unbalanced 1 (against Force)." },
+      { "name": "Flame Wall", "ap": "❯❯", "mp": 15, "target": "Row", "duration": "Instantaneous", "offensive": true, "damage": "HR+20", "require": "Flame", "effect": "Deal fire damage." },
+      { "name": "Lightning Spear", "ap": "❯", "mp": 20, "target": "Column", "duration": "Instantaneous", "offensive": true, "damage": "HR+20", "require": "Zap", "effect": "Deal bolt damage." },
+      { "name": "Wall of Ice", "ap": "❯❯", "mp": 20, "target": "1x1 Grid", "duration": "Scene", "offensive": false, "damage": null, "require": "Frostbite", "effect": "Construct an ice wall unit in a front grid. Column attacks hit only the wall. It has 3 HP, loses max 1 HP per damage instance, and is destroyed instantly by fire damage. Only one ice wall can exist at a time." },
+      { "name": "Inferno", "ap": "❯❯❯", "mp": 30, "target": "All Enemies", "duration": "Instantaneous", "offensive": true, "damage": "HR+30", "require": "Flame Wall", "effect": "Deal fire damage." },
+      { "name": "Lightning Storm", "ap": "❯❯", "mp": 20, "target": "2x2 Grid", "duration": "Scene", "offensive": false, "damage": null, "require": "Lightning Spear", "effect": "At the end of the round, deal 10 bolt damage to units occupying the grid." },
+      { "name": "Icicle Barrage", "ap": "❯❯", "mp": 25, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+50", "require": "Wall of Ice", "effect": "Deal ice damage." },
+      { "name": "Elemental Shaping", "ap": "❯", "mp": 20, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+20", "require": null, "effect": "Deal physical damage (against Armor). Condense elemental force into physical matter for a brief moment." }
+    ]
+  },
+  "natural": {
+    "name": "Natural Magic",
+    "source": "Landwarden",
+    "attribute": "【F+S】",
+    "casts": [
+      { "name": "Land Restoration", "ap": "❯", "mp": 15, "target": "2x2 Grid", "duration": "Instantaneous", "offensive": false, "damage": null, "require": null, "effect": "Clear one lingering effect of your choice." },
+      { "name": "Vine Grip", "ap": "❯❯", "mp": 5, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+15", "require": null, "effect": "Deal poison damage and inflict Disarm 2 (against Force)." },
+      { "name": "Stonewake", "ap": "❯", "mp": 5, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+20", "require": null, "effect": "Deal earth damage." },
+      { "name": "Stonecrush", "ap": "❯", "mp": 10, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+15", "require": "Stonewake", "effect": "Deal earth damage and inflict Staggered 1 (against Grace)." },
+      { "name": "Soilblessing", "ap": "❯", "mp": 10, "target": "Willing Creature", "duration": "Scene", "offensive": false, "damage": null, "require": null, "effect": "Give Force🔼." },
+      { "name": "Gust", "ap": "❯", "mp": 5, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+20", "require": null, "effect": "Deal wind damage." },
+      { "name": "Windcutter", "ap": "❯", "mp": 10, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+10", "require": "Gust", "effect": "Deal wind damage and inflict Bleed 3 (against Grace)." }
+    ]
+  },
+  "dark": {
+    "name": "Dark Magic",
+    "source": "Nocturne",
+    "attribute": "【H+S】",
+    "casts": [
+      { "name": "Darkblast", "ap": "❯", "mp": 5, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+20", "require": null, "effect": "Deal dark damage." },
+      { "name": "Darkwave", "ap": "❯", "mp": 15, "target": "Row", "duration": "Instantaneous", "offensive": true, "damage": "HR+15", "require": "Darkblast", "effect": "Deal dark damage." },
+      { "name": "Blinding Darkness", "ap": "❯❯", "mp": 15, "target": "Column", "duration": "Instantaneous", "offensive": true, "damage": "HR+5", "require": "Darkwave", "effect": "Deal dark damage and inflict Blind 2 (against Soul)." },
+      { "name": "Muting Darkness", "ap": "❯❯", "mp": 10, "target": "Column", "duration": "Instantaneous", "offensive": true, "damage": "HR+5", "require": "Darkwave", "effect": "Deal dark damage and inflict Silence 2 (against Soul)." },
+      { "name": "Siphon Vitality", "ap": "❯❯", "mp": 5, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+25", "require": "Darkblast", "effect": "Deal dark damage, then restore HP equal to half the HP loss the target suffered (none if the loss was reduced to 0)." },
+      { "name": "Siphon Soul", "ap": "❯❯", "mp": 5, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+25", "require": "Darkblast", "effect": "Deal dark damage, then restore MP equal to half the HP loss the target suffered (none if the loss was reduced to 0)." },
+      { "name": "Enfeebling Darkness", "ap": "❯❯", "mp": 10, "target": "Creature", "duration": "Scene", "offensive": true, "damage": "HR+5", "require": "Darkblast", "effect": "Deal dark damage and inflict Force🔻 (against Soul)." }
+    ]
+  },
+  "resonance": {
+    "name": "Resonance Tunes",
+    "source": "Minstrel",
+    "attribute": "【G+H】",
+    "casts": [
+      { "name": "Sonic Note", "ap": "❯", "mp": 5, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+15", "require": null, "effect": "Deal non-affinity damage." },
+      { "name": "Lament", "ap": "❯❯", "mp": 10, "target": "Row", "duration": "Instantaneous", "offensive": true, "damage": null, "require": null, "effect": "Inflict Slow 2 (against Mind)." },
+      { "name": "War Drums", "ap": "❯❯", "mp": 15, "target": "Creature", "duration": "Instantaneous", "offensive": false, "damage": null, "require": null, "effect": "+5 Attack Damage until the end of Party Turn (excluding yourself)." },
+      { "name": "Spellchant Harmony", "ap": "❯❯", "mp": 15, "target": "Creature", "duration": "Instantaneous", "offensive": false, "damage": null, "require": null, "effect": "+8 Cast Damage until the end of Party Turn (excluding yourself)." },
+      { "name": "Crescendo", "ap": "❯", "mp": 5, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": "HR+15", "require": null, "effect": "This cast reduces MP instead of HP." },
+      { "name": "Downbeat Tempo", "ap": "❯", "mp": 5, "target": "Creature", "duration": "Scene", "offensive": false, "damage": null, "require": null, "effect": "Inflict Grace🔻 (against Mind)." },
+      { "name": "Soulcrushing Tempo", "ap": "❯", "mp": 5, "target": "Creature", "duration": "Scene", "offensive": false, "damage": null, "require": null, "effect": "Inflict Soul🔻 (against Mind)." },
+      { "name": "Calming Serenade", "ap": "❯❯", "mp": 10, "target": "Row", "duration": "Instantaneous", "offensive": false, "damage": null, "require": null, "effect": "Clear one status effect." },
+      { "name": "Song of Silence", "ap": "❯❯", "mp": 10, "target": "Creature", "duration": "Instantaneous", "offensive": true, "damage": null, "require": null, "effect": "Inflict Silenced 2 (against Soul)." },
+      { "name": "Rejuvenating Melody", "ap": "❯❯", "mp": 25, "target": "All Allies", "duration": "Instantaneous", "offensive": false, "damage": null, "require": null, "effect": "Restore 20 MP (excluding yourself)." },
+      { "name": "Refrain", "ap": "❯❯", "mp": 10, "target": "Creature", "duration": "Instantaneous", "offensive": false, "damage": null, "require": null, "effect": "Reset a creature's Multi Attack Penalty." }
+    ]
+  }
+}
