@@ -65,6 +65,15 @@ function getEncounter(channelId) {
     return activeEncounters.get(channelId);
 }
 
+// Class ability reference — edit classes.json to update, no code changes needed
+let classData = {};
+try {
+    classData = require('./classes.json');
+    console.log(`✅ Loaded ${Object.keys(classData).length} classes`);
+} catch (err) {
+    console.error('⚠️ classes.json not found — $class disabled');
+}
+
 const EMOJIS = { HP: '❤️', MP: '💧', IP: '💰', Armor: '🛡️', Barrier: '✨', Overdrive: '⚡' };
 const MAX_OVERDRIVE = 12;
 const MAX_HISTORY = 5;
@@ -1625,12 +1634,74 @@ client.on('messageCreate', async message => {
             return;
         }
 
+        // $class [name] — show class abilities from classes.json
+        if (cmd === 'class') {
+            const keys = Object.keys(classData);
+            if (keys.length === 0) {
+                await message.channel.send('❌ Class data not loaded.');
+                await del();
+                return;
+            }
+
+            // Bare $class — list all classes
+            if (!args[0]) {
+                const names = keys.map(k => classData[k].name).join(' · ');
+                const embed = new EmbedBuilder()
+                    .setColor(0x00BFFF)
+                    .setTitle('📚 Classes')
+                    .setDescription(`${names}\n\nUse \`$class <name>\` for details. Partial names work: \`$class bers\``);
+                await message.channel.send({ embeds: [embed] });
+                await del();
+                return;
+            }
+
+            // Match: exact -> startsWith -> includes
+            const query = args[0].toLowerCase();
+            let matches = keys.filter(k => k === query);
+            if (matches.length === 0) matches = keys.filter(k => k.startsWith(query));
+            if (matches.length === 0) matches = keys.filter(k => k.includes(query));
+
+            if (matches.length === 0) {
+                await message.channel.send(`❌ No class matching **${args[0]}**. Try \`$class\` to see the list.`);
+                await del();
+                return;
+            }
+            if (matches.length > 1) {
+                await message.channel.send(`❓ Multiple matches: ${matches.map(k => `**${classData[k].name}**`).join(', ')} — be more specific.`);
+                await del();
+                return;
+            }
+
+            const c = classData[matches[0]];
+            const embed = new EmbedBuilder()
+                .setColor(0x9B59B6)
+                .setTitle(`📚 ${c.name}`)
+                .setDescription(`*${c.aliases}*\n**Proficiencies:** ${c.proficiencies}`);
+
+            for (const skill of c.skills) {
+                embed.addFields({
+                    name: `${skill.name} (${skill.cost}) — ${skill.maxSP}✦`,
+                    value: skill.summary,
+                    inline: false
+                });
+            }
+
+            await message.channel.send({ embeds: [embed] });
+            await del();
+            return;
+        }
+
         // $help
         if (cmd === 'help') {
             const embed = new EmbedBuilder()
                 .setColor(0x00BFFF)
                 .setTitle('📖 Eien Saga — Command Guide')
                 .addFields(
+                    {
+                        name: '📚 Class Reference',
+                        value: '`$class` — list all classes · `$class <name>` — show its 5 abilities\nPartial names work: `$class bers`',
+                        inline: false
+                    },
                     { 
                         name: '🎮 Setup', 
                         value: '`$set <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set Gandalf 100 50 100 20 15`\n`$set <sheet_url>` — import from Google Sheets (stores FMGSH stats)\n\n`$view` or `$view @player` — stats, crisis status, base stats\n`$image <url>` — set your character image (thumbnail on `$view`, `$a`, `$r`) · `$image` alone clears it', 
