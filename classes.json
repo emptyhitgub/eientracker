@@ -1,0 +1,182 @@
+{
+  "acolyte": {
+    "name": "Acolyte",
+    "aliases": "Cleric, Healer, Spiritist",
+    "proficiencies": "Crushing, Tome · Light Protection, Shield, Nullifier",
+    "skills": [
+      { "name": "White Magic", "cost": "var", "maxSP": 10, "summary": "Each acquisition learns one White Magic cast. Offensive White Magic uses 【H+S】 and requires an arcane weapon. First acquisition also unlocks White Magic freeform casting." },
+      { "name": "Savior", "cost": "⨂", "maxSP": 1, "summary": "When a creature takes damage that doesn't reduce it to 0 HP, immediately perform a Cast that restores its HP. Once per conflict until start of next Party Turn." },
+      { "name": "Spiritual Reserve", "cost": "⨂", "maxSP": 3, "summary": "When a creature uses a Skill or cast costing up to 【SP × 10】 MP, spend your MP in place of theirs. Once per conflict until start of next Party Turn." },
+      { "name": "Helping Word", "cost": "⨂", "maxSP": 5, "summary": "When you or an Ally who can hear you performs a check, spend 5 MP to grant 🔼 to one die. Usable 【SP】 times per session." },
+      { "name": "Lightbrand", "cost": "❯", "maxSP": 1, "summary": "Spend 10 MP to brand a willing creature. While active, your damaging Casts also heal the branded creature equal to the Cast's MP cost. Scene duration, one brand at a time." }
+    ]
+  },
+  "berserker": {
+    "name": "Berserker",
+    "aliases": "Barbarian, Brawler, Fury",
+    "proficiencies": "Brawling, Polearm (2H), Massive (2H) · no defensive proficiencies",
+    "skills": [
+      { "name": "Intimidating Roar", "cost": "❯", "maxSP": 3, "summary": "Spend 10 MP, 【F+S】 against Heart on a front-row Enemy (target number reduced by 【SP】). Success pushes them to the back row; their back row moves forward." },
+      { "name": "Whirlwind", "cost": "❯❯", "maxSP": 3, "summary": "Attack a row of enemies and inflict Bleed for 【SP】 rounds (against Grace). Requires Massive or Polearm; weapon modifier counts as 0 for this attack." },
+      { "name": "Rage", "cost": "passive", "maxSP": 5, "summary": "While in crisis, your attacks deal bonus damage equal to 【SP × 2】." },
+      { "name": "Taunt", "cost": "❯", "maxSP": 3, "summary": "Spend 5 MP, 【F+S】 against Soul (target number reduced by 【SP】). Success compels the target to include you in its attacks/offensive casts for 【SP】 turns." },
+      { "name": "Bloodlust", "cost": "⨂", "maxSP": 1, "summary": "When you drop a creature (except minions) to 0 HP, spend 5 MP to make a free attack against another target." }
+    ]
+  },
+  "evoker": {
+    "name": "Evoker",
+    "aliases": "Elementalist, Spellblade, Witch",
+    "proficiencies": "Mystic, Focus · Light Protection, Nullifier",
+    "skills": [
+      { "name": "Evocation", "cost": "var", "maxSP": 10, "summary": "Each acquisition learns one Evocation cast. Offensive Evocation uses 【M+S】 and requires an arcane weapon. First acquisition also unlocks Evocation freeform casting." },
+      { "name": "Imbue", "cost": "var", "maxSP": 3, "summary": "Channel a single-target offensive cast (MP cost up to 【SP × 10】) into a non-arcane weapon, spending its MP and AP. Your next attack adds the cast's damage modifier, element, and status. Ends after the attack resolves; multi-target attacks lose the imbue." },
+      { "name": "Energy Reservoir", "cost": "passive", "maxSP": 3, "summary": "Permanently increase Max MP by 【SP × 10】." },
+      { "name": "Dualcast", "cost": "⨂", "maxSP": 1, "summary": "When casting with at least 1 AP, spend 15 MP and roll d6: 5-6 the cast resolves twice (ignoring costs and MCP) and refunds the 15 MP; 2-4 fails; 1 fails and costs an extra 15 MP." },
+      { "name": "Mystic Mastery", "cost": "passive", "maxSP": 1, "summary": "Mystic weapon attacks can target any creature from any row, target Barrier, and use 【M+S】." }
+    ]
+  },
+  "fighter": {
+    "name": "Fighter",
+    "aliases": "Knight, Samurai, Weaponmaster",
+    "proficiencies": "Sharp, Crushing, Quick, Polearm (2H), Massive (2H) · Medium Protection, Shield",
+    "skills": [
+      { "name": "Low Blow", "cost": "❯", "maxSP": 5, "summary": "Spend 5 MP, 【F+G】 against Force (target number reduced by 【SP】). Success inflicts Staggered 2." },
+      { "name": "Quick Draw", "cost": "⨂", "maxSP": 3, "summary": "Spend 10 MP to switch weapons as a free action. Usable 【SP】 times per scene." },
+      { "name": "Perfect Grip", "cost": "⨂", "maxSP": 3, "summary": "On a non-fumble attack, spend 10 MP to reroll a die showing 1 or 2; keep the new roll. Cannot gain criticals or fumbles this way. Usable 【SP】 times per scene." },
+      { "name": "Overwhelming Attack", "cost": "❯", "maxSP": 5, "summary": "Spend 5 MP to attack an exposed creature: bonus 【SP × 5】 damage to Armor, no excess transfers to HP. Ignores resistance." },
+      { "name": "Opening", "cost": "⨂", "maxSP": 1, "summary": "When you break a creature's Armor, spend 5 MP to make a free attack against it." }
+    ]
+  },
+  "landwarden": {
+    "name": "Landwarden",
+    "aliases": "Botanist, Druid, Shaman",
+    "proficiencies": "Crushing, Mystic (2H), Tome · Light Protection, Nullifier",
+    "skills": [
+      { "name": "Call Spirit", "cost": "❯", "maxSP": 3, "summary": "In Clash, spend 5 MP and roll d6 to summon a spirit. Spirit effects trigger at end of Party Turn. Up to 【SP】 spirits active at once (minimum one)." },
+      { "name": "Ancestral Blessing", "cost": "❯", "maxSP": 5, "summary": "While a spirit is active, gain its ancestral blessing. Spend 10 MP to consume an active spirit and unleash a stronger version of its effect." },
+      { "name": "Natural Magic", "cost": "var", "maxSP": 5, "summary": "Each acquisition learns one Natural Magic cast. Offensive Natural Magic uses 【F+S】 and requires an arcane weapon. First acquisition also unlocks Natural Magic freeform casting." },
+      { "name": "Barrier Transfer", "cost": "⨂", "maxSP": 1, "summary": "When another creature would take non-true damage, consume all your Barrier to reduce it by that amount. May Defend as part of this. Once until start of your next turn." },
+      { "name": "Land Protection", "cost": "passive", "maxSP": 5, "summary": "Increase your Barrier value by 【SP × 5】." }
+    ]
+  },
+  "minstrel": {
+    "name": "Minstrel",
+    "aliases": "Bard, Chanter, Musician",
+    "proficiencies": "Sharp, Quick, Short, Long (2H) · Medium Protection",
+    "skills": [
+      { "name": "Tunes", "cost": "var", "maxSP": 10, "summary": "Each acquisition learns one Resonance tune. Offensive tunes use 【G+H】. First acquisition also unlocks Resonance freeform casting." },
+      { "name": "Inspiring Echo", "cost": "passive", "maxSP": 3, "summary": "Your HP/MP restoration to yourself and allies is increased by 【SP × 3】." },
+      { "name": "Reverbrating Strike", "cost": "passive", "maxSP": 5, "summary": "After playing a tune, your next attack deals bonus damage equal to 【SP × 3】." },
+      { "name": "Rhythm Step", "cost": "⨂", "maxSP": 1, "summary": "After playing a tune, perform the Switch action for free." },
+      { "name": "Dynamic Duet", "cost": "❯❯", "maxSP": 1, "summary": "Spend 20 MP to choose a Duet Partner. Roll 2d10 immediately and at the start of each Party Turn; choose one result — both of you gain that song effect. Lasts until Clash ends or partner is reassigned." }
+    ]
+  },
+  "monk": {
+    "name": "Monk",
+    "aliases": "Martial Artist, Ninja, Chi-Master",
+    "proficiencies": "Sharp, Crushing, Quick, Brawling, Tome · no defensive proficiencies",
+    "skills": [
+      { "name": "☯︎ Body", "cost": "❯", "maxSP": 5, "summary": "Attacks gain bonus damage equal to 【SP】 and empowers Techniques. Spend 5 MP to open a Body chakra; it carries to next Party Turn only if used this turn." },
+      { "name": "☯︎ Spirit", "cost": "❯", "maxSP": 5, "summary": "Permanently +【SP × 3】 Max HP and empowers Techniques. Spend 5 MP to open a Spirit chakra; it carries to next Party Turn only if used this turn." },
+      { "name": "☯︎ Clarity", "cost": "❯", "maxSP": 5, "summary": "Permanently +【SP × 3】 Barrier and empowers Techniques. Spend 5 MP to open a Clarity chakra; it carries to next Party Turn only if used this turn." },
+      { "name": "Technique", "cost": "❯", "maxSP": 1, "summary": "Spend 5 MP to release a Technique with your opened chakras. Requires Unarmed, Brawling, or Crushing main hand; no Shield or Nullifier. All Techniques are Gate 1 and ignore MAP." },
+      { "name": "Absorb Chakra", "cost": "❯", "maxSP": 3, "summary": "Consume one or more active chakras; restore HP and MP by 【SP × 5】 per chakra consumed." }
+    ]
+  },
+  "nocturne": {
+    "name": "Nocturne",
+    "aliases": "Dark Knight, Darkblade, Shadowhunter",
+    "proficiencies": "Sharp, Quick, Polearm (2H), Massive (2H) · Medium Protection",
+    "skills": [
+      { "name": "Dark Magic", "cost": "var", "maxSP": 5, "summary": "Each acquisition learns one Dark Magic cast. Offensive Dark Magic uses 【H+S】. First acquisition also unlocks Dark Magic freeform casting." },
+      { "name": "Drain", "cost": "passive", "maxSP": 5, "summary": "Whenever you damage a creature with an attack or cast, gain HP and MP equal to 【SP】." },
+      { "name": "Ebonblade", "cost": "❯", "maxSP": 3, "summary": "Spend 10 MP to conjure a spectral 2H dark weapon (Polearm or Massive), modifier 10 + 【SP × 2】. Attacks with it start at Gate 3, deal dark damage ignoring dark resistance. Vanishes when a new ebonblade is made." },
+      { "name": "Borrowed Power", "cost": "⨂", "maxSP": 1, "summary": "During Party Turn, gain 3 AP immediately. After your turn ends, you cannot act or react until the end of the next Party Turn." },
+      { "name": "Soul Exchange", "cost": "⨂", "maxSP": 1, "summary": "Swap your current HP and MP with another willing creature (values above max become max). Once per scene." }
+    ]
+  },
+  "physician": {
+    "name": "Physician",
+    "aliases": "Herbalist, Medic, Pharmacist",
+    "proficiencies": "Sharp, Crushing, Quick, Short, Tome · Light Protection, Shield",
+    "skills": [
+      { "name": "Numbing Draught", "cost": "❯", "maxSP": 5, "summary": "Spend 2 IP to heal a creature up to 【SP × 15】 HP (can overheal to 150% Max). Target gains the Draught debuff: at start of next Party Turn, it takes damage equal to HP healed (cannot drop below 1 HP)." },
+      { "name": "Refined Medicine", "cost": "passive", "maxSP": 5, "summary": "IP-spending abilities heal +【SP × 5】. Draught feedback damage is reduced by 【SP × 5】." },
+      { "name": "Revitalizing Stimulant", "cost": "❯", "maxSP": 3, "summary": "Spend 2 IP on a creature. The next time it enters crisis, it immediately regains 【SP × 15】 HP. Doesn't stack." },
+      { "name": "Prime Elixir", "cost": "❯", "maxSP": 2, "summary": "Spend 3 IP to prime a creature: it gains 🔼 to one attribute of your choice until the scene ends. Stacks with other 🔼 effects." },
+      { "name": "Emergency Medicine", "cost": "⨂", "maxSP": 1, "summary": "When an Ally is threatened, apply Numbing Draught or Revitalizing Stimulant before damage resolves. Once per conflict until start of next Party Turn." }
+    ]
+  },
+  "provisioner": {
+    "name": "Provisioner",
+    "aliases": "Merchant, Tinkerer, Trader",
+    "proficiencies": "Sharp, Crushing, Polearm (2H), Massive (2H), Short · Heavy Protection, Shield",
+    "skills": [
+      { "name": "Bigger Bag", "cost": "❯", "maxSP": 5, "summary": "Permanently +【SP × 3】 Max IP. Attack an exposed creature with your bag: 【F+F】, damage HR + your current IP, then lose 2 IP." },
+      { "name": "Premium Pass", "cost": "passive", "maxSP": 3, "summary": "Access exclusive suppliers: Inventory actions can use items up to Tier 【SP】." },
+      { "name": "Discount", "cost": "passive", "maxSP": 5, "summary": "Purchases and equipment upgrades cost 【SP × 5】% less zenit (max discount set by GM)." },
+      { "name": "Two for One", "cost": "⨂", "maxSP": 1, "summary": "When an Ally spends IP on an Inventory Action, immediately attack with Bigger Bag, make a free Inventory Action, or use an IP-spending Skill, up to the amount they spent." },
+      { "name": "Jack in a Box", "cost": "❯❯", "maxSP": 2, "summary": "Spend 3 IP, roll 3d6 and assign to the Jack-in-the-Box tables (target / amount / effect). Reroll up to 【SP】 unwanted dice." }
+    ]
+  },
+  "ranger": {
+    "name": "Ranger",
+    "aliases": "Archer, Hunter, Sharpshooter",
+    "proficiencies": "Polearm (2H), Short, Long (2H) · Medium Protection",
+    "skills": [
+      { "name": "Mark", "cost": "❯", "maxSP": 5, "summary": "Spend 10 MP to Mark a creature. Damage you deal to it with Short or Long gains +【SP × 2】. Lasts until you mark another creature or the scene ends." },
+      { "name": "Burning Arrow", "cost": "❯", "maxSP": 5, "summary": "Spend 10 MP to ignite a column. At end of round, each unit on those tiles takes 10 true fire damage. Lasts 【SP】 rounds." },
+      { "name": "Precision", "cost": "passive", "maxSP": 1, "summary": "Checks with Short and Long weapons crit on any doubles (if not a fumble), not just 6+." },
+      { "name": "Silencing Shot", "cost": "⨂", "maxSP": 1, "summary": "When an opponent Casts, spend 10 MP to make a ranged attack against them; on success (against Mind), Silenced 1 and the Cast is interrupted. Once per conflict until start of next Party Turn." },
+      { "name": "Ranger's Reprisal", "cost": "⨂", "maxSP": 5, "summary": "When your Marked target attacks, spend 10 MP to immediately attack it for +【SP × 3】 damage. The Mark is then removed." }
+    ]
+  },
+  "scholar": {
+    "name": "Scholar",
+    "aliases": "Loremaster, Tactician, Strategist",
+    "proficiencies": "Sharp, Crushing, Quick, Focus, Tome · Light Protection, Nullifier",
+    "skills": [
+      { "name": "In the Know", "cost": "passive", "maxSP": 3, "summary": "On reaching a new location, spend up to 【SP × 5】 MP; each 5 MP buys one truthful GM answer about the surroundings and its people." },
+      { "name": "Pattern Recognition", "cost": "⨂", "maxSP": 3, "summary": "In Clash, when a creature rolls a non-crit non-fumble attack/cast, force it to reroll one die. Usable 【SP】 times per scene." },
+      { "name": "Best Way to Do It", "cost": "passive", "maxSP": 1, "summary": "Before a check that doesn't include Mind, spend 20 MP to replace one attribute die with Mind." },
+      { "name": "Contingency Plan", "cost": "passive", "maxSP": 6, "summary": "After resting, roll 【SP】 Mind dice and record them. Before a check, replace up to two dice with recorded results (even impossible ones). Matched contingency numbers don't crit or fumble. Unused rolls discard on next rest." },
+      { "name": "Stratagem", "cost": "❯❯", "maxSP": 10, "summary": "First acquisition grants one Schema and one Gambit; each further 【SP】 grants a Schema OR Gambit. Deploy on a grid for combined MP cost; upkeep half the Gambit's MP each Party Turn or it ends." }
+    ]
+  },
+  "sentinel": {
+    "name": "Sentinel",
+    "aliases": "Guardian, Shieldbearer, Tank",
+    "proficiencies": "Sharp, Crushing, Polearm (2H) · Heavy Protection, Shield",
+    "skills": [
+      { "name": "Intercept", "cost": "⨂", "maxSP": 3, "summary": "When another creature is threatened, take their place. If the danger already affected you, it hits you twice. Usable 【SP】 times until start of next Party Turn." },
+      { "name": "Steadfast", "cost": "⨂", "maxSP": 1, "summary": "When you Intercept, spend 5 MP to halve the triggering damage (only the first instance if it hits you twice). Once until start of next Party Turn." },
+      { "name": "Fortify", "cost": "passive", "maxSP": 5, "summary": "While wearing Heavy Protection, increase your Armor value by 【SP × 5】." },
+      { "name": "Shield Slam", "cost": "⨂", "maxSP": 5, "summary": "When you Defend with a Shield equipped, make a free attack against an exposed Enemy: 【F+F】, damage HR + Shield's Armor value + 【SP × 2】." },
+      { "name": "Stand Behind Me", "cost": "passive", "maxSP": 1, "summary": "Allies in the grid space behind you gain resistance to column-based attacks and casts." }
+    ]
+  },
+  "thief": {
+    "name": "Thief",
+    "aliases": "Assassin, Swift, Rogue",
+    "proficiencies": "Sharp, Quick, Brawling, Short · Medium Protection",
+    "skills": [
+      { "name": "Evasion", "cost": "⨂", "maxSP": 5, "summary": "When targeted by an attack, cast, or danger in Clash, roll d6: on 5-6 avoid the damage entirely. Usable 【SP】 times per scene. Can't dodge tile-targeted effects." },
+      { "name": "Footwork", "cost": "⨂", "maxSP": 1, "summary": "After you attack, Stride or Switch as a free action." },
+      { "name": "Slice and Dice", "cost": "❯❯", "maxSP": 3, "summary": "Spend 10 MP and roll 5d6; the poker-style combination determines the effect (pairs to five-of-a-kind, multiplied damage). No crits or fumbles. Requires Quick main hand. Usable 【SP】 times per scene." },
+      { "name": "Steal", "cost": "❯", "maxSP": 5, "summary": "Spend 10 MP, 【G+M】 against Soul (target number reduced by 【SP】). Success grants 【SP】 IP to you or an Ally. One attempt per Enemy." },
+      { "name": "Payback", "cost": "⨂", "maxSP": 1, "summary": "When an exposed creature attacks or casts at you and deals no damage (miss or fully absorbed), immediately make a free attack against it." }
+    ]
+  },
+  "tracker": {
+    "name": "Tracker",
+    "aliases": "Beastmaster, Pathfinder, Wayfarer",
+    "proficiencies": "Sharp, Short, Long (2H) · Medium Protection",
+    "skills": [
+      { "name": "Animal Companion", "cost": "passive", "maxSP": 3, "summary": "Choose a companion (Swift / Loyal / Tough); its level equals yours. It acts using your AP, flees at 0 HP and rejoins next scene at its crisis score, and rests when you rest." },
+      { "name": "Track", "cost": "passive", "maxSP": 1, "summary": "Checks to track a creature, item, or location gain 🔼 on both dice." },
+      { "name": "Reveal Trap", "cost": "⨂", "maxSP": 3, "summary": "When an Enemy attacks or casts, spend 3 IP to spring a trap first: 【SP × 5】 true damage plus choose up to 【SP】 riders (debuff check, forced switch, +10 damage, -15 MP, or Exposed until round ends)." },
+      { "name": "Prepared for Danger", "cost": "⨂", "maxSP": 1, "summary": "When you or an Ally gains a status effect, immediately perform an Inventory action to use Panacea (or premium variant) at normal IP cost." },
+      { "name": "Field Sense", "cost": "passive", "maxSP": 5, "summary": "First time you damage a plant, monster, or beast: learn its Max HP/MP OR all its resistances, and deal +【SP】 bonus damage to that monster type. Once per scene per creature." }
+    ]
+  }
+}
