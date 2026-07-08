@@ -74,6 +74,26 @@ try {
     console.error('⚠️ classes.json not found — $class disabled');
 }
 
+// Cast reference — edit casts.json to update, no code changes needed
+let castData = {};
+try {
+    castData = require('./casts.json');
+    const n = Object.values(castData).reduce((a, s) => a + s.casts.length, 0);
+    console.log(`✅ Loaded ${n} casts in ${Object.keys(castData).length} schools`);
+} catch (err) {
+    console.error('⚠️ casts.json not found — $cast disabled');
+}
+
+// Format one cast as an embed field
+function castField(c) {
+    const bits = [`${c.mp} MP`, c.target, c.duration];
+    if (c.damage) bits.push(c.damage);
+    let value = bits.join(' · ');
+    if (c.require) value += `\n*Requires: ${c.require}*`;
+    value += `\n${c.effect}`;
+    return { name: `${c.offensive ? '🪄 ' : ''}${c.name} (${c.ap})`, value, inline: false };
+}
+
 const EMOJIS = { HP: '❤️', MP: '💧', IP: '💰', Armor: '🛡️', Barrier: '✨', Overdrive: '⚡' };
 const MAX_OVERDRIVE = 12;
 const MAX_HISTORY = 5;
@@ -1634,6 +1654,81 @@ client.on('messageCreate', async message => {
             return;
         }
 
+        // $cast [school|name] — show cast schools, a school's list, or one cast
+        if (cmd === 'cast' || cmd === 'casts') {
+            const schoolKeys = Object.keys(castData);
+            if (schoolKeys.length === 0) {
+                await message.channel.send('❌ Cast data not loaded.');
+                await del();
+                return;
+            }
+
+            // Bare $cast — list schools
+            if (!args[0]) {
+                const lines = schoolKeys.map(k => {
+                    const s = castData[k];
+                    return `**${s.name}** (${s.source}, ${s.attribute}) — ${s.casts.length} casts`;
+                });
+                const embed = new EmbedBuilder()
+                    .setColor(0x00BFFF)
+                    .setTitle('🪄 Cast Schools')
+                    .setDescription(`${lines.join('\n')}\n\nUse \`$cast <school>\` for the list or \`$cast <name>\` for one cast.\nExample: \`$cast white\` · \`$cast cure\``);
+                await message.channel.send({ embeds: [embed] });
+                await del();
+                return;
+            }
+
+            const query = args.join(' ').toLowerCase();
+
+            // School match first: key or school name
+            let school = schoolKeys.find(k => k === query)
+                || schoolKeys.find(k => castData[k].name.toLowerCase() === query)
+                || schoolKeys.find(k => k.startsWith(query))
+                || schoolKeys.find(k => castData[k].name.toLowerCase().startsWith(query));
+
+            if (school) {
+                const s = castData[school];
+                const embed = new EmbedBuilder()
+                    .setColor(0x9B59B6)
+                    .setTitle(`🪄 ${s.name}`)
+                    .setDescription(`*${s.source} · offensive casts use ${s.attribute} and require an arcane weapon*`);
+                for (const c of s.casts) embed.addFields(castField(c));
+                await message.channel.send({ embeds: [embed] });
+                await del();
+                return;
+            }
+
+            // Single cast search across all schools: exact -> startsWith -> includes
+            const all = [];
+            for (const k of schoolKeys) {
+                for (const c of castData[k].casts) all.push({ school: castData[k], cast: c });
+            }
+            let matches = all.filter(e => e.cast.name.toLowerCase() === query);
+            if (matches.length === 0) matches = all.filter(e => e.cast.name.toLowerCase().startsWith(query));
+            if (matches.length === 0) matches = all.filter(e => e.cast.name.toLowerCase().includes(query));
+
+            if (matches.length === 0) {
+                await message.channel.send(`❌ No school or cast matching **${args.join(' ')}**. Try \`$cast\` to see the schools.`);
+                await del();
+                return;
+            }
+            if (matches.length > 1) {
+                await message.channel.send(`❓ Multiple matches: ${matches.map(e => `**${e.cast.name}**`).join(', ')} — be more specific.`);
+                await del();
+                return;
+            }
+
+            const { school: s, cast: c } = matches[0];
+            const field = castField(c);
+            const embed = new EmbedBuilder()
+                .setColor(0x9B59B6)
+                .setTitle(`🪄 ${c.name} (${c.ap})`)
+                .setDescription(`*${s.name} · ${s.source}${c.offensive ? ` · ${s.attribute}` : ''}*\n\n${field.value}`);
+            await message.channel.send({ embeds: [embed] });
+            await del();
+            return;
+        }
+
         // $class [name] — show class abilities from classes.json
         if (cmd === 'class') {
             const keys = Object.keys(classData);
@@ -1699,7 +1794,7 @@ client.on('messageCreate', async message => {
                 .addFields(
                     {
                         name: '📚 Class Reference',
-                        value: '`$class` — list all classes · `$class <name>` — show its 5 abilities\nPartial names work: `$class bers`',
+                        value: '`$class` — list all classes · `$class <name>` — show its 5 abilities\n`$cast` — list cast schools · `$cast <school>` — full list · `$cast <name>` — one cast\nPartial names work: `$class bers` · `$cast frost`',
                         inline: false
                     },
                     { 
