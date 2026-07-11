@@ -353,13 +353,8 @@ async function extractCharacterFromSheet(sheetUrl) {
         const maxMP = (parseInt(getCellValue(data, 'Q18')) || 0) + (parseInt(getCellValue(data, 'Q20')) || 0);
         const maxIP = (parseInt(getCellValue(data, 'Q21')) || 0) + (parseInt(getCellValue(data, 'Q23')) || 0);
 
-        const armorA = parseInt(getCellValue(data, 'AA15')) || 0;
-        const armorB = parseInt(getCellValue(data, 'AA17')) || 0;
-        const maxArmor = armorA + armorB || 0;
-
-        const barrierA = parseInt(getCellValue(data, 'AA18')) || 0;
-        const barrierB = parseInt(getCellValue(data, 'AA20')) || 0;
-        const maxBarrier = barrierA + barrierB || 0;
+        const maxArmor = parseInt(getCellValue(data, 'AA15')) || 0;
+        const maxBarrier = parseInt(getCellValue(data, 'AA18')) || 0;
         
         const force = parseDiceValue(getCellValue(data, 'S26'));
         const mind = parseDiceValue(getCellValue(data, 'S28'));
