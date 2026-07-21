@@ -679,7 +679,7 @@ client.on('messageCreate', async message => {
         // No targets = target self; slots/mentions = target clash positions
         if (cmd === 'dmg') {
             if (!args[0] || isNaN(parseInt(args[0]))) {
-                await message.channel.send('Usage: `$dmg <amount> [a|b|t] [slot#/@mention/pet letter...]`\n`a`=armor (default), `b`=barrier, `t`=true\nExample: `$dmg 20 a 1 3` · `$dmg 20 a @Aoi @boyfie` · `$dmg 15 b` (targets self)');
+                await message.channel.send('Usage: `$dmg <amount> [a|b|t] [slot#/@mention/pet letter...]`\n`a`=armor (default), `b`=barrier, `t`=true\nExample: `$dmg 20 a 1 3` · `$dmg 20 a @PlayerOne @PlayerTwo` · `$dmg 15 b` (targets self)');
                 await del();
                 return;
             }
@@ -2022,12 +2022,12 @@ client.on('messageCreate', async message => {
                     },
                     {
                         name: '🎲 GM Attack',
-                        value: '`$ga <d1> <d2> <mod> <gate> [a|b|t] [@players / slot#...]`\nExample: `$ga 10 8 15 1 b @Aoi 3`\nMiss only if **both** dice roll at or below gate.\n**Types:** `a`=armor (default), `b`=barrier, `t`=true\nTargets ping outside the embed (shows the orange highlight) but anyone can still click **Take Damage**.',
+                        value: '`$ga <d1> <d2> <mod> <gate> [a|b|t] [@players / slot#...]`\nExample: `$ga 10 8 15 1 b @PlayerOne 3`\nMiss only if **both** dice roll at or below gate.\n**Types:** `a`=armor (default), `b`=barrier, `t`=true\nTargets ping outside the embed (shows the orange highlight) but anyone can still click **Take Damage**.',
                         inline: false
                     },
                     {
                         name: '💔 Apply Damage (Cascade)',
-                        value: '`$dmg <amount> [a|b|t] [slot#/@mention/pet letter...]`\nApplies damage through Armor/Barrier first, overflow hits HP.\nNo targets = self. Numbers and @mentions target players (mixable), letters target pets (HP directly).\n⚠️ When targeting pets, always include the type flag first: `$dmg 20 a a` hits pet **a** with armor damage.\nExample: `$dmg 20 a 1 3` · `$dmg 20 a @Aoi @boyfie` · `$dmg 15 b` (self) · `$dmg 10 t a b` (pets a & b)',
+                        value: '`$dmg <amount> [a|b|t] [slot#/@mention/pet letter...]`\nApplies damage through Armor/Barrier first, overflow hits HP.\nNo targets = self. Numbers and @mentions target players (mixable), letters target pets (HP directly).\n⚠️ When targeting pets, always include the type flag first: `$dmg 20 a a` hits pet **a** with armor damage.\nExample: `$dmg 20 a 1 3` · `$dmg 20 a @PlayerOne @PlayerTwo` · `$dmg 15 b` (self) · `$dmg 10 t a b` (pets a & b)',
                         inline: false
                     },
                     {
