@@ -1495,6 +1495,8 @@ client.on('messageCreate', async message => {
                     )
                     .setDescription(fumble ? '💀 **FUMBLE!**' : '❌ **MISS**');
 
+                if (targetLine) embed.addFields({ name: '🎯 For', value: targetLine, inline: false });
+
                 await message.channel.send({ content: targetLine || undefined, embeds: [embed] });
                 await del();
                 return;
@@ -1510,6 +1512,8 @@ client.on('messageCreate', async message => {
                 )
                 .setDescription(crit ? '⭐ **CRITICAL!**' : '✅ **HIT!**')
                 .setFooter({ text: 'Click Take Damage to apply — use $defend first to add defenses' });
+
+            if (targetLine) embed.addFields({ name: '🎯 For', value: targetLine, inline: false });
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
@@ -1707,15 +1711,19 @@ client.on('messageCreate', async message => {
         }
 
         // $clock — create, adjust, list, remove. Channel-scoped, multiple at once.
+        // Creation requires the explicit `new` subcommand so it can never be confused
+        // with adjustment (which is just `<name> +1` / `-1`) — no more guessing which
+        // one a bare number after the name means.
         // Pie-slice rendering skipped (no canvas/image deps in this stack) — filled/empty
         // circle bar (⬤◯) gives the same at-a-glance wedge count with zero dependencies.
         if (cmd === 'clock') {
             const clocks = getClocks(channelId);
             const sub = args[0]?.toLowerCase();
+            const RESERVED_NAMES = ['new', 'list', 'remove', 'delete'];
 
             if (!sub || sub === 'list') {
                 if (clocks.size === 0) {
-                    await message.channel.send('🕐 No clocks in this channel. `$clock <name> <total> [description]` to create one.');
+                    await message.channel.send('🕐 No clocks in this channel. `$clock new <name> <total> [description]` to create one.');
                     await del();
                     return;
                 }
@@ -1744,13 +1752,46 @@ client.on('messageCreate', async message => {
                 return;
             }
 
+            // Create: $clock new <name> <total> [description]
+            if (sub === 'new') {
+                const name = args[1];
+                const total = parseInt(args[2]);
+
+                if (!name || isNaN(total) || total < 1) {
+                    await message.channel.send('Usage: `$clock new <name> <total segments> [description]`\nExample: `$clock new siege_gate 6 The gate breaks open`\n(names can\'t contain spaces — use underscores)');
+                    await del();
+                    return;
+                }
+                if (RESERVED_NAMES.includes(name.toLowerCase())) {
+                    await message.channel.send(`❌ **${name}** is a reserved word — pick a different clock name.`);
+                    await del();
+                    return;
+                }
+                if (clocks.has(name)) {
+                    await message.channel.send(`❌ Clock **${name}** already exists. Remove it first or pick a different name.`);
+                    await del();
+                    return;
+                }
+
+                const description = args.slice(3).join(' ') || null;
+                clocks.set(name, { total, filled: 0, description });
+
+                const embed = new EmbedBuilder()
+                    .setColor(0x00BFFF)
+                    .setTitle(`🕐 ${name} created`)
+                    .setDescription(`${clockBar(0, total)} (0/${total})${description ? `\n*${description}*` : ''}`);
+                await message.channel.send({ embeds: [embed] });
+                await del();
+                return;
+            }
+
+            // Adjust: $clock <name> +1 / -2 / +
             const name = args[0];
             const second = args[1];
 
-            // Adjust: $clock <name> +1 / -2 / +
             if (name && second && /^[+-]\d*$/.test(second)) {
                 if (!clocks.has(name)) {
-                    await message.channel.send(`❌ No clock named **${name}**. Create one with \`$clock <name> <total> [description]\`.`);
+                    await message.channel.send(`❌ No clock named **${name}**. Create one with \`$clock new <name> <total> [description]\`.`);
                     await del();
                     return;
                 }
@@ -1772,26 +1813,7 @@ client.on('messageCreate', async message => {
                 return;
             }
 
-            // Create: $clock <name> <total> [description]
-            const total = parseInt(second);
-            if (!name || !second || isNaN(total) || total < 1) {
-                await message.channel.send('Usage: `$clock <name> <total segments> [description]` to create\n`$clock <name> +1` / `-1` to adjust\n`$clock list` · `$clock remove <name>`\n(names can\'t contain spaces — use underscores)');
-                await del();
-                return;
-            }
-            if (clocks.has(name)) {
-                await message.channel.send(`❌ Clock **${name}** already exists. Remove it first or pick a different name.`);
-                await del();
-                return;
-            }
-            const description = args.slice(2).join(' ') || null;
-            clocks.set(name, { total, filled: 0, description });
-
-            const embed = new EmbedBuilder()
-                .setColor(0x00BFFF)
-                .setTitle(`🕐 ${name} created`)
-                .setDescription(`${clockBar(0, total)} (0/${total})${description ? `\n*${description}*` : ''}`);
-            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('Usage: `$clock new <name> <total> [description]` to create\n`$clock <name> +1` / `-1` to adjust\n`$clock list` · `$clock remove <name>`');
             await del();
             return;
         }
@@ -2035,7 +2057,7 @@ client.on('messageCreate', async message => {
                     },
                     {
                         name: '🕐 Clocks',
-                        value: '`$clock <name> <total> [description]` — create a clock\n`$clock <name> +1` / `-1` — fill or drain a segment\n`$clock list` — show all clocks in this channel\n`$clock remove <name>` — delete one\nMultiple clocks can run at once. Names can\'t have spaces — use underscores.\nExample: `$clock siege_gate 6 The gate breaks open` · `$clock siege_gate +1`',
+                        value: '`$clock new <name> <total> [description]` — create a clock\n`$clock <name> +1` / `-1` — fill or drain a segment\n`$clock list` — show all clocks in this channel\n`$clock remove <name>` — delete one\nMultiple clocks can run at once. Names can\'t have spaces — use underscores.\nExample: `$clock new siege_gate 6 The gate breaks open` · `$clock siege_gate +1`',
                         inline: false
                     },
                     {
