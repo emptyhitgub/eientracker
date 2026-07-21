@@ -65,6 +65,19 @@ function getEncounter(channelId) {
     return activeEncounters.get(channelId);
 }
 
+// Clocks — channel-scoped, multiple at once, no external deps
+const channelClocks = new Map(); // channelId -> Map(name -> { total, filled, description })
+
+function getClocks(channelId) {
+    if (!channelClocks.has(channelId)) channelClocks.set(channelId, new Map());
+    return channelClocks.get(channelId);
+}
+
+function clockBar(filled, total) {
+    const f = Math.max(0, Math.min(total, filled));
+    return '⬤'.repeat(f) + '◯'.repeat(total - f);
+}
+
 // Class ability reference — edit classes.json to update, no code changes needed
 let classData = {};
 try {
@@ -79,7 +92,7 @@ let castData = {};
 try {
     castData = require('./casts.json');
     const n = Object.values(castData).reduce((a, s) => a + s.casts.length, 0);
-    console.log(`✅ Loaded ${n} casts in ${Object.keys(castData).length} schools`);
+    console.log(`✅ Loaded ${n} casts in ${Object.keys(castData).length} sources`);
 } catch (err) {
     console.error('⚠️ casts.json not found — $cast disabled');
 }
@@ -277,24 +290,24 @@ async function fetchSheetData(spreadsheetId, gid) {
     try {
         let url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
         let response = await fetch(url);
-        
+
         if (!response.ok && gid === '0') {
             url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
             response = await fetch(url);
         }
-        
+
         if (!response.ok) {
             url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
             response = await fetch(url);
         }
-        
+
         if (!response.ok) throw new Error('Sheet not accessible');
         const csvText = await response.text();
-        
+
         if (csvText.includes('<!DOCTYPE') || csvText.includes('<html')) {
             throw new Error('Sheet requires authentication');
         }
-        
+
         return parseCSV(csvText);
     } catch (error) {
         console.error('Error fetching sheet:', error);
@@ -344,10 +357,10 @@ function parseDiceValue(value) {
 async function extractCharacterFromSheet(sheetUrl) {
     const parsed = parseSheetUrl(sheetUrl);
     if (!parsed) return { error: 'Invalid Google Sheets URL' };
-    
+
     const data = await fetchSheetData(parsed.spreadsheetId, parsed.gid);
     if (!data) return { error: 'Could not fetch sheet. Make sure it\'s public (Anyone with link can view)' };
-    
+
     try {
         const maxHP = (parseInt(getCellValue(data, 'Q15')) || 0) + (parseInt(getCellValue(data, 'Q17')) || 0);
         const maxMP = (parseInt(getCellValue(data, 'Q18')) || 0) + (parseInt(getCellValue(data, 'Q20')) || 0);
@@ -355,15 +368,15 @@ async function extractCharacterFromSheet(sheetUrl) {
 
         const maxArmor = parseInt(getCellValue(data, 'AA15')) || 0;
         const maxBarrier = parseInt(getCellValue(data, 'AA18')) || 0;
-        
+
         const force = parseDiceValue(getCellValue(data, 'S26'));
         const mind = parseDiceValue(getCellValue(data, 'S28'));
         const grace = parseDiceValue(getCellValue(data, 'S30'));
         const soul = parseDiceValue(getCellValue(data, 'S32'));
         const heart = parseDiceValue(getCellValue(data, 'S34'));
-        
+
         const characterName = getCellValue(data, 'E2') || getCellValue(data, 'F2') || getCellValue(data, 'E3') || getCellValue(data, 'F3') || 'Character';
-        
+
         return { characterName, maxHP, maxMP, maxIP, maxArmor, maxBarrier, stats: { force, mind, grace, soul, heart } };
     } catch (error) {
         console.error('Error extracting character:', error);
@@ -435,32 +448,32 @@ client.on('ready', async () => {
 
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.content.startsWith(PREFIX)) return;
-    
+
     const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
     const cmd = args.shift().toLowerCase();
     const channelId = message.channel.id;
-    
+
     const del = async () => { try { await message.delete(); } catch (e) {} };
-    
+
     try {
         // $set
         if (cmd === 'set') {
             const user = message.mentions.users.first() || message.author;
             const member = await message.guild.members.fetch(user.id);
             const offset = message.mentions.users.first() ? 1 : 0;
-            
+
             const firstArg = args[offset];
             if (firstArg && firstArg.includes('docs.google.com')) {
                 await message.channel.send('📥 Importing character from Google Sheets...');
-                
+
                 const result = await extractCharacterFromSheet(firstArg);
-                
+
                 if (result.error) {
                     await message.channel.send(`❌ ${result.error}\n\n**Make sure:**\n- Sheet is public (Share → Anyone with link can view)\n- URL is correct`);
                     await del();
                     return;
                 }
-                
+
                 playerData.set(user.id, {
                     username: member.displayName,
                     characterName: result.characterName,
@@ -470,9 +483,9 @@ client.on('messageCreate', async message => {
                     maxArmor: result.maxArmor, maxBarrier: result.maxBarrier,
                     stats: result.stats
                 });
-                
+
                 await saveCharacterSheet(user.id, playerData.get(user.id));
-                
+
                 const embed = new EmbedBuilder()
                     .setColor(0x00FF00)
                     .setTitle(`✨ ${result.characterName}`)
@@ -486,34 +499,34 @@ client.on('messageCreate', async message => {
                         { name: '📊 Base Stats', value: `FORCE: ${result.stats.force} | MIND: ${result.stats.mind} | GRACE: ${result.stats.grace}\nSOUL: ${result.stats.soul} | HEART: ${result.stats.heart}`, inline: false }
                     )
                     .setFooter({ text: 'Imported from Google Sheets' });
-                
+
                 await message.channel.send({ embeds: [embed] });
                 await del();
                 return;
             }
-            
+
             if (args.length < 6 + offset) {
                 await message.channel.send('Usage: `$set <n> <hp> <mp> <ip> <armor> <barrier>` or `$set <sheet_url>`\nExample: `$set Gandalf 100 50 100 20 15`');
                 await del();
                 return;
             }
-            
+
             const [name, hp, mp, ip, armor, barrier] = [args[offset], parseInt(args[offset+1]), parseInt(args[offset+2]), parseInt(args[offset+3]), parseInt(args[offset+4]), parseInt(args[offset+5])];
-            
+
             if (isNaN(hp) || isNaN(mp) || isNaN(ip) || isNaN(armor) || isNaN(barrier)) {
                 await message.channel.send('❌ All stats must be numbers!');
                 await del();
                 return;
             }
-            
+
             playerData.set(user.id, {
                 username: member.displayName, characterName: name,
                 HP: hp, MP: mp, IP: ip, Armor: 0, Barrier: 0,
                 maxHP: hp, maxMP: mp, maxIP: ip, maxArmor: armor, maxBarrier: barrier
             });
-            
+
             await saveCharacterSheet(user.id, playerData.get(user.id));
-            
+
             const embed = new EmbedBuilder()
                 .setColor(0x00FF00)
                 .setTitle(`✨ ${name}`)
@@ -525,12 +538,12 @@ client.on('messageCreate', async message => {
                     { name: `${EMOJIS.Barrier} Barrier`, value: `0/${barrier}`, inline: true }
                 )
                 .setFooter({ text: 'HP/MP/IP full • Armor/Barrier 0' });
-            
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
-        
+
         // $view
         if (cmd === 'view') {
             const user = message.mentions.users.first() || message.author;
@@ -543,7 +556,7 @@ client.on('messageCreate', async message => {
             }
 
             const d = playerData.get(user.id);
-            
+
             const embed = new EmbedBuilder()
                 .setColor(0x0099FF)
                 .setTitle(`${d.characterName}${inCrisis(d) ? ' (crisis)' : ''}`)
@@ -560,7 +573,7 @@ client.on('messageCreate', async message => {
                 const sv = (k) => `${effectiveStat(d, k)}${statArrow(d, k)}`;
                 embed.addFields({ name: '📊 Stats', value: `FORCE: ${sv('force')} | MIND: ${sv('mind')} | GRACE: ${sv('grace')}\nSOUL: ${sv('soul')} | HEART: ${sv('heart')}`, inline: false });
             }
-            
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
@@ -605,11 +618,11 @@ client.on('messageCreate', async message => {
             return;
         }
 
-        // $dmg <amount> [a|b|t] [slot#...]
-        // No slots = target self; slots = target clash positions
+        // $dmg <amount> [a|b|t] [slot#/letter/@mention...]
+        // No targets = target self; slots/mentions = target clash positions
         if (cmd === 'dmg') {
             if (!args[0] || isNaN(parseInt(args[0]))) {
-                await message.channel.send('Usage: `$dmg <amount> [a|b|t] [slot#...]`\n`a`=armor (default), `b`=barrier, `t`=true\nExample: `$dmg 20 a 1 3` or `$dmg 15 b` (targets self)');
+                await message.channel.send('Usage: `$dmg <amount> [a|b|t] [slot#/@mention/pet letter...]`\n`a`=armor (default), `b`=barrier, `t`=true\nExample: `$dmg 20 a 1 3` · `$dmg 20 a @Aoi @boyfie` · `$dmg 15 b` (targets self)');
                 await del();
                 return;
             }
@@ -625,12 +638,15 @@ client.on('messageCreate', async message => {
                 else if (flag === 't') dmgType = 'true';
             }
 
-            const slots = slotArgs.map(s => parseInt(s)).filter(n => !isNaN(n));
-            const petSlots = slotArgs
+            const mentionedIds = [...message.mentions.users.keys()];
+            // Strip raw mention tokens out of slotArgs so they don't get parsed as numbers/letters
+            const tokenArgs = slotArgs.filter(s => !/^<@!?\d+>$/.test(s));
+            const slots = tokenArgs.map(s => parseInt(s)).filter(n => !isNaN(n));
+            const petSlots = tokenArgs
                 .filter(s => /^[a-z]$/i.test(s) && isNaN(parseInt(s)))
                 .map(s => s.toLowerCase().charCodeAt(0) - 97);
 
-            if (slots.length === 0 && petSlots.length === 0) {
+            if (slots.length === 0 && petSlots.length === 0 && mentionedIds.length === 0) {
                 const userId = message.author.id;
                 if (!(await tryLoadPlayer(userId))) {
                     await message.channel.send('❌ No character found. Use `$set` first.');
@@ -655,22 +671,27 @@ client.on('messageCreate', async message => {
 
             const encounter = getEncounter(channelId);
             if (!encounter.active) {
-                await message.channel.send('❌ No active clash in this channel. Omit slot numbers to target yourself.');
+                await message.channel.send('❌ No active clash in this channel. Omit targets to hit yourself.');
                 await del();
                 return;
             }
 
             const errors = [];
             const embedObjects = [];
+
+            const targetIds = new Set(mentionedIds);
             for (const slot of slots) {
                 const idx = slot - 1;
                 if (idx < 0 || idx >= encounter.combatants.length) {
                     errors.push(`❌ No combatant in slot **${slot}**.`);
                     continue;
                 }
-                const targetId = encounter.combatants[idx];
+                targetIds.add(encounter.combatants[idx]);
+            }
+
+            for (const targetId of targetIds) {
                 if (!playerData.has(targetId)) {
-                    errors.push(`❌ Slot **${slot}** has no character data.`);
+                    errors.push(`❌ <@${targetId}> has no character data.`);
                     continue;
                 }
                 saveSnapshot(targetId);
@@ -681,7 +702,7 @@ client.on('messageCreate', async message => {
                 if (crisisNotice) cascadeLines.push(crisisNotice);
                 const embed = new EmbedBuilder()
                     .setColor(0xFF6B6B)
-                    .setTitle(`💔 ${slot}. ${d.characterName} — ${dmg} ${typeLabelFn(dmgType)} Damage`)
+                    .setTitle(`💔 ${d.characterName} — ${dmg} ${typeLabelFn(dmgType)} Damage`)
                     .setDescription(cascadeLines.join('\n'));
                 if (d.HP === 0) embed.setFooter({ text: '💀 HP reached 0!' });
                 embedObjects.push(embed);
@@ -785,11 +806,11 @@ client.on('messageCreate', async message => {
             return;
         }
 
-        // $a <d1> <d2> [mod] [gate] — mod defaults 0, gate defaults 1
+        // $a <d1> <d2> [mod] [gate] [a|b|t] — mod defaults 0, gate defaults 1, dmg type optional
         // NEW GATE RULE: miss only if BOTH dice roll at or below gate
         if (cmd === 'a' || cmd === 'attack') {
             if (args.length < 2) {
-                await message.channel.send('Usage: `$a <d1|stat> <d2|stat> [mod] [gate]`\nStats: `f m g s h` (needs imported sheet)\nDefaults: mod=0, gate=1\nExample: `$a f g 5 2`');
+                await message.channel.send('Usage: `$a <d1|stat> <d2|stat> [mod] [gate] [a|b|t]`\nStats: `f m g s h` (needs imported sheet)\nDefaults: mod=0, gate=1\nAdd `a`/`b`/`t` at the end to tag the damage type.\nExample: `$a f g 5 2 b`');
                 await del();
                 return;
             }
@@ -797,45 +818,55 @@ client.on('messageCreate', async message => {
             const userId = message.author.id;
             const data = await ensurePlayer(userId, message.member.displayName);
 
-            const d1 = resolveDie(args[0], data);
-            const d2 = resolveDie(args[1], data);
-            const mod = args[2] !== undefined ? parseInt(args[2]) : 0;
-            const gate = args[3] !== undefined ? parseInt(args[3]) : 1;
+            // Peel an optional trailing damage-type flag off before parsing the numeric args
+            let coreArgs = [...args];
+            let dmgTypeArg = null;
+            if (coreArgs.length > 2 && ['a','b','t'].includes(coreArgs[coreArgs.length - 1].toLowerCase())) {
+                dmgTypeArg = coreArgs.pop().toLowerCase();
+            }
+
+            const d1 = resolveDie(coreArgs[0], data);
+            const d2 = resolveDie(coreArgs[1], data);
+            const mod = coreArgs[2] !== undefined ? parseInt(coreArgs[2]) : 0;
+            const gate = coreArgs[3] !== undefined ? parseInt(coreArgs[3]) : 1;
 
             if (isNaN(d1) || isNaN(d2) || isNaN(mod) || isNaN(gate)) {
                 await message.channel.send('❌ Dice must be numbers or stat letters (`f m g s h` — stat letters need an imported sheet with `$set <url>`).');
                 await del();
                 return;
             }
-            
+
             const r1 = Math.floor(Math.random() * d1) + 1;
             const r2 = Math.floor(Math.random() * d2) + 1;
             const hr = Math.max(r1, r2);
             const dmg = hr + mod;
-            
+
             const fumble = r1 === 1 && r2 === 1;
             const crit = !fumble && r1 === r2 && r1 >= 6;
             const hit = fumble ? false : crit ? true : !(r1 <= gate && r2 <= gate);
-            
+
+            const typeLabel = dmgTypeArg === 'a' ? 'Armor' : dmgTypeArg === 'b' ? 'Barrier' : dmgTypeArg === 't' ? 'True' : null;
+
             const embed = new EmbedBuilder()
                 .setColor(fumble ? 0x800000 : crit ? 0xFFD700 : hit ? 0x00FF00 : 0xFF0000)
                 .setTitle(`🎲 ${data.characterName}'s Attack`)
                 .setThumbnail(data.imageUrl || null)
                 .addFields(
-                    { name: 'Dice', value: `${dieLabel(args[0], data)}d${d1}: **${r1}** | ${dieLabel(args[1], data)}d${d2}: **${r2}** = **${r1 + r2}**\nGate: **${gate}** (miss if both ≤**${gate}**)`, inline: false },
-                    { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}**`, inline: false }
+                    { name: 'Dice', value: `${dieLabel(coreArgs[0], data)}d${d1}: **${r1}** | ${dieLabel(coreArgs[1], data)}d${d2}: **${r2}** = **${r1 + r2}**\nGate: **${gate}** (miss if both ≤**${gate}**)`, inline: false },
+                    { name: 'Damage', value: `HR = **${hr}**\n${hr} + ${mod} = **${dmg}**${typeLabel ? ` ${typeLabel}` : ''}`, inline: false }
                 );
-            
+
+            if (!typeLabel) embed.setFooter({ text: '💡 Add a/b/t at the end to tag damage type, e.g. $a f g 5 2 b' });
             if (fumble) embed.setDescription('💀 **FUMBLE!**');
             else if (crit) embed.setDescription('⭐ **CRITICAL!**');
             else if (hit) embed.setDescription('✅ **HIT!**');
             else embed.setDescription('❌ **MISS**');
-            
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
-        
+
         // $hp
         if (cmd === 'hp') {
             if (!args[0]) { await message.channel.send('Usage: `$hp <±amount|full|zero>`'); await del(); return; }
@@ -844,7 +875,7 @@ client.on('messageCreate', async message => {
             saveSnapshot(userId);
             const d = playerData.get(userId);
             const old = d.HP;
-            
+
             if (args[0] === 'full') d.HP = d.maxHP;
             else if (args[0] === 'zero') d.HP = 0;
             else d.HP = Math.max(0, d.HP + parseInt(args[0]));
@@ -857,12 +888,12 @@ client.on('messageCreate', async message => {
 
             const crisisNotice = checkFirstCrisis(channelId, userId, d);
             if (crisisNotice) embed.setDescription(crisisNotice);
-            
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
-        
+
         // $mp
         if (cmd === 'mp') {
             if (!args[0]) { await message.channel.send('Usage: `$mp <±amount|full|zero>`'); await del(); return; }
@@ -871,22 +902,22 @@ client.on('messageCreate', async message => {
             saveSnapshot(userId);
             const d = playerData.get(userId);
             const old = d.MP;
-            
+
             if (args[0] === 'full') d.MP = d.maxMP;
             else if (args[0] === 'zero') d.MP = 0;
             else d.MP = Math.max(0, d.MP + parseInt(args[0]));
             savePlayerState(userId);
-            
+
             const embed = new EmbedBuilder()
                 .setColor(d.MP > old ? 0x00FF00 : 0xFF6B6B)
                 .setTitle(d.characterName)
                 .addFields({ name: `${EMOJIS.MP} MP`, value: `${old} → **${d.MP}**/${d.maxMP}`, inline: true });
-            
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
-        
+
         // $ip
         if (cmd === 'ip') {
             if (!args[0]) { await message.channel.send('Usage: `$ip <±amount|full|zero>`'); await del(); return; }
@@ -895,22 +926,22 @@ client.on('messageCreate', async message => {
             saveSnapshot(userId);
             const d = playerData.get(userId);
             const old = d.IP;
-            
+
             if (args[0] === 'full') d.IP = d.maxIP;
             else if (args[0] === 'zero') d.IP = 0;
             else d.IP = Math.max(0, d.IP + parseInt(args[0]));
             savePlayerState(userId);
-            
+
             const embed = new EmbedBuilder()
                 .setColor(d.IP > old ? 0x00FF00 : 0xFF6B6B)
                 .setTitle(d.characterName)
                 .addFields({ name: `${EMOJIS.IP} IP`, value: `${old} → **${d.IP}**/${d.maxIP}`, inline: true });
-            
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
-        
+
         // $armor
         if (cmd === 'armor') {
             if (!args[0]) { await message.channel.send('Usage: `$armor <amount|full|zero>`'); await del(); return; }
@@ -919,21 +950,21 @@ client.on('messageCreate', async message => {
             saveSnapshot(userId);
             const d = playerData.get(userId);
             const old = d.Armor;
-            
+
             if (args[0] === 'full') d.Armor = d.maxArmor;
             else if (args[0] === 'zero') d.Armor = 0;
             else d.Armor = Math.max(0, d.Armor + parseInt(args[0]));
-            
+
             const embed = new EmbedBuilder()
                 .setColor(d.Armor > old ? 0x00FF00 : 0xFF6B6B)
                 .setTitle(d.characterName)
                 .addFields({ name: `${EMOJIS.Armor} Armor`, value: `${old} → **${d.Armor}**/${d.maxArmor}`, inline: true });
-            
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
-        
+
         // $barrier
         if (cmd === 'barrier') {
             if (!args[0]) { await message.channel.send('Usage: `$barrier <amount|full|zero>`'); await del(); return; }
@@ -942,16 +973,16 @@ client.on('messageCreate', async message => {
             saveSnapshot(userId);
             const d = playerData.get(userId);
             const old = d.Barrier;
-            
+
             if (args[0] === 'full') d.Barrier = d.maxBarrier;
             else if (args[0] === 'zero') d.Barrier = 0;
             else d.Barrier = Math.max(0, d.Barrier + parseInt(args[0]));
-            
+
             const embed = new EmbedBuilder()
                 .setColor(d.Barrier > old ? 0x00FF00 : 0xFF6B6B)
                 .setTitle(d.characterName)
                 .addFields({ name: `${EMOJIS.Barrier} Barrier`, value: `${old} → **${d.Barrier}**/${d.maxBarrier}`, inline: true });
-            
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
@@ -1063,9 +1094,9 @@ client.on('messageCreate', async message => {
             await del();
             return;
         }
-        
-        // $defend
-        if (cmd === 'defend' || cmd === 'd') {
+
+        // $defend / $d / $def
+        if (cmd === 'defend' || cmd === 'd' || cmd === 'def') {
             const userId = message.author.id;
             await ensurePlayer(userId, message.member.displayName);
             saveSnapshot(userId);
@@ -1073,7 +1104,7 @@ client.on('messageCreate', async message => {
             const oldA = d.Armor, oldB = d.Barrier;
             d.Armor += d.maxArmor;
             d.Barrier += d.maxBarrier;
-            
+
             const embed = new EmbedBuilder()
                 .setColor(0x00FF00)
                 .setTitle(`🛡️ ${d.characterName}`)
@@ -1082,36 +1113,42 @@ client.on('messageCreate', async message => {
                     { name: `${EMOJIS.Armor} Armor`, value: `${oldA} +${d.maxArmor} = **${d.Armor}**`, inline: true },
                     { name: `${EMOJIS.Barrier} Barrier`, value: `${oldB} +${d.maxBarrier} = **${d.Barrier}**`, inline: true }
                 );
-            
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
-        
-        // $turn
+
+        // $turn — resets Armor/Barrier for the whole party in this channel's clash
         if (cmd === 'turn') {
-            const user = message.mentions.users.first() || message.author;
-            const member = await message.guild.members.fetch(user.id);
-            await ensurePlayer(user.id, member.displayName);
-            saveSnapshot(user.id);
-            const d = playerData.get(user.id);
-            d.Armor = 0;
-            d.Barrier = 0;
-            
+            const encounter = getEncounter(channelId);
+            if (!encounter.active || encounter.combatants.length === 0) {
+                await message.channel.send('❌ No active clash with combatants in this channel.');
+                await del();
+                return;
+            }
+
+            let cleared = 0;
+            for (const userId of encounter.combatants) {
+                const d = playerData.get(userId);
+                if (d) {
+                    saveSnapshot(userId);
+                    d.Armor = 0;
+                    d.Barrier = 0;
+                    cleared++;
+                }
+            }
+
             const embed = new EmbedBuilder()
                 .setColor(0xFF6B6B)
-                .setTitle(`💨 ${d.characterName}`)
-                .setDescription('**Turn Reset!**')
-                .addFields(
-                    { name: `${EMOJIS.Armor} Armor`, value: `**0**/${d.maxArmor}`, inline: true },
-                    { name: `${EMOJIS.Barrier} Barrier`, value: `**0**/${d.maxBarrier}`, inline: true }
-                );
-            
+                .setTitle('💨 Turn Reset!')
+                .setDescription(`Cleared Armor/Barrier for **${cleared}** combatant(s).`);
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
-        
+
         // $rest
         if (cmd === 'rest') {
             const userId = message.author.id;
@@ -1124,7 +1161,7 @@ client.on('messageCreate', async message => {
             d.Barrier = 0;
             d.statMods = {};
             savePlayerState(userId);
-            
+
             const embed = new EmbedBuilder()
                 .setColor(0x00FFFF)
                 .setTitle(`✨ ${d.characterName}`)
@@ -1135,13 +1172,14 @@ client.on('messageCreate', async message => {
                     { name: `${EMOJIS.Armor} Armor`, value: `**0**/${d.maxArmor}`, inline: true },
                     { name: `${EMOJIS.Barrier} Barrier`, value: `**0**/${d.maxBarrier}`, inline: true }
                 );
-            
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
-        
-        // $round — NEW: auto +1 Overdrive
+
+        // $round — new round marker only: bumps Overdrive, clears turn checkmarks.
+        // No longer touches Armor/Barrier — use $turn for that.
         if (cmd === 'round') {
             const encounter = getEncounter(channelId);
             if (!encounter.active) {
@@ -1149,69 +1187,66 @@ client.on('messageCreate', async message => {
                 await del();
                 return;
             }
-            
-            let cleared = 0;
-            for (const userId of encounter.combatants) {
-                const d = playerData.get(userId);
-                if (d) {
-                    saveSnapshot(userId);
-                    d.Armor = 0;
-                    d.Barrier = 0;
-                    cleared++;
-                }
-            }
-            
+
             encounter.turnsTaken.clear();
 
             const oldOD = encounter.overdrive;
             encounter.overdrive = Math.min(MAX_OVERDRIVE, encounter.overdrive + 1);
-            
+
             const embed = new EmbedBuilder()
                 .setColor(0xFFAA00)
                 .setTitle('🔄 New Round!')
-                .setDescription(`Cleared **${cleared}** combatants`)
                 .addFields(
-                    { name: '🛡️ Armor', value: 'Set to **0**', inline: true },
-                    { name: '✨ Barrier', value: 'Set to **0**', inline: true },
                     { name: '✅ Turns', value: 'Reset', inline: true },
                     { name: `${EMOJIS.Overdrive} Overdrive`, value: `${oldOD} → **${encounter.overdrive}** / ${MAX_OVERDRIVE} (+1 new round)`, inline: true }
                 );
-            
+
             await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
 
-        // $random [count] — pick random distinct targets from clash list
+        // $random [count] — pick random distinct targets from clash list, including pets
         if (cmd === 'random') {
             const encounter = getEncounter(channelId);
-            if (!encounter.active || encounter.combatants.length === 0) {
+            const pets = encounter.pets || [];
+            if (!encounter.active || (encounter.combatants.length === 0 && pets.length === 0)) {
                 await message.channel.send('❌ No active clash with combatants in this channel.');
                 await del();
                 return;
             }
 
+            // Pool mixes players (numbered) and pets (lettered)
+            const pool = [
+                ...encounter.combatants.map((_, i) => ({ type: 'pc', idx: i })),
+                ...pets.map((_, i) => ({ type: 'pet', idx: i }))
+            ];
+
             let count = parseInt(args[0]) || 1;
-            count = Math.max(1, Math.min(count, encounter.combatants.length));
+            count = Math.max(1, Math.min(count, pool.length));
 
-            // Fisher-Yates shuffle on slot indices
-            const indices = encounter.combatants.map((_, i) => i);
-            for (let i = indices.length - 1; i > 0; i--) {
+            // Fisher-Yates shuffle
+            for (let i = pool.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
-                [indices[i], indices[j]] = [indices[j], indices[i]];
+                [pool[i], pool[j]] = [pool[j], pool[i]];
             }
-            const picked = indices.slice(0, count).sort((a, b) => a - b);
+            const picked = pool.slice(0, count);
 
-            const lines = picked.map(idx => {
-                const d = playerData.get(encounter.combatants[idx]);
-                return `**${idx + 1}.** ${d ? d.characterName : 'Unknown'}`;
+            const lines = picked.map(p => {
+                if (p.type === 'pc') {
+                    const d = playerData.get(encounter.combatants[p.idx]);
+                    return `**${p.idx + 1}.** ${d ? d.characterName : 'Unknown'}`;
+                } else {
+                    const letter = String.fromCharCode(97 + p.idx);
+                    return `**${letter}.** ${pets[p.idx].name} 🐾`;
+                }
             });
 
             const embed = new EmbedBuilder()
                 .setColor(0xAA00FF)
                 .setTitle(`🎯 Random Target${count > 1 ? 's' : ''}`)
                 .setDescription(lines.join('\n'))
-                .setFooter({ text: 'Slot numbers usable with $dmg' });
+                .setFooter({ text: 'Slot numbers / pet letters usable with $dmg' });
 
             await message.channel.send({ embeds: [embed] });
             await del();
@@ -1295,11 +1330,12 @@ client.on('messageCreate', async message => {
                 const maxKey = sub === 'hp' ? 'maxHP' : 'maxMP';
                 const emoji = sub === 'hp' ? EMOJIS.HP : EMOJIS.MP;
                 const old = myPet[key];
+                let delta = null;
 
                 if (args[1] === 'full') myPet[key] = myPet[maxKey];
                 else if (args[1] === 'zero') myPet[key] = 0;
                 else {
-                    const delta = parseInt(args[1]);
+                    delta = parseInt(args[1]);
                     if (isNaN(delta)) {
                         await message.channel.send(`Usage: \`$pet ${sub} <±amount|full|zero>\``);
                         await del();
@@ -1308,10 +1344,13 @@ client.on('messageCreate', async message => {
                     myPet[key] = Math.max(0, myPet[key] + delta);
                 }
 
+                const changeText = delta !== null ? ` (${delta > 0 ? '+' : ''}${delta})` : '';
+                const isDamage = sub === 'hp' && delta !== null && delta < 0;
+
                 const embed = new EmbedBuilder()
-                    .setColor(myPet[key] > old ? 0x00FF00 : 0xFF6B6B)
-                    .setTitle(`🐾 ${myPet.name}`)
-                    .addFields({ name: `${emoji} ${key}`, value: `${old} → **${myPet[key]}**/${myPet[maxKey]}`, inline: true });
+                    .setColor(myPet[key] > old ? 0x00FF00 : myPet[key] < old ? 0xFF6B6B : 0xAAAAAA)
+                    .setTitle(isDamage ? `💔 ${myPet.name} — Took the hit!` : `🐾 ${myPet.name}`)
+                    .addFields({ name: `${emoji} ${key}`, value: `${old} → **${myPet[key]}**/${myPet[maxKey]}${changeText}`, inline: true });
                 if (sub === 'hp' && myPet.HP === 0) embed.setFooter({ text: '💀 HP reached 0!' });
 
                 await message.channel.send({ embeds: [embed] });
@@ -1344,19 +1383,20 @@ client.on('messageCreate', async message => {
             await del();
             return;
         }
-        
-        // $ga <d1> <d2> <mod> <gate> [type]
-        // FIX 2: targets removed — anyone can click Take Damage
+
+        // $ga <d1> <d2> <mod> <gate> [a|b|t] [@players / slot#...]
+        // FIX 2: targets removed as auth — anyone can click Take Damage
         // NEW GATE RULE: miss only if BOTH dice roll at or below gate
+        // Mentions now sent as message content (outside the embed) so the orange ping highlight shows
         if (cmd === 'ga') {
             if (args.length < 4) {
                 await message.channel.send('Usage: `$ga <d1> <d2> <mod> <gate> [a|b|t] [@players / slot#...]`\n`a`=armor (default), `b`=barrier, `t`=true\nTargets are a ping/indicator only — anyone can still click Take Damage.');
                 await del();
                 return;
             }
-            
+
             const [d1, d2, mod, gate] = [parseInt(args[0]), parseInt(args[1]), parseInt(args[2]), parseInt(args[3])];
-            
+
             let dmgType = 'armor';
             let targetArgs = args.slice(4);
             if (targetArgs.length > 0 && ['a','b','t'].includes(targetArgs[0].toLowerCase())) {
@@ -1378,16 +1418,16 @@ client.on('messageCreate', async message => {
                 }
             }
             const targetLine = targetIds.size > 0 ? [...targetIds].map(id => `<@${id}>`).join(' ') : null;
-            
+
             const r1 = Math.floor(Math.random() * d1) + 1;
             const r2 = Math.floor(Math.random() * d2) + 1;
             const hr = Math.max(r1, r2);
             const dmg = hr + mod;
-            
+
             const fumble = r1 === 1 && r2 === 1;
             const crit = !fumble && r1 === r2 && r1 >= 6;
             const hit = fumble ? false : crit ? true : !(r1 <= gate && r2 <= gate);
-            
+
             if (fumble || !hit) {
                 const embed = new EmbedBuilder()
                     .setColor(fumble ? 0x800000 : 0xFF0000)
@@ -1398,13 +1438,11 @@ client.on('messageCreate', async message => {
                     )
                     .setDescription(fumble ? '💀 **FUMBLE!**' : '❌ **MISS**');
 
-                if (targetLine) embed.addFields({ name: '🎯 For', value: targetLine, inline: false });
-                
-                await message.channel.send({ embeds: [embed] });
+                await message.channel.send({ content: targetLine || undefined, embeds: [embed] });
                 await del();
                 return;
             }
-            
+
             const typeLabel = dmgType === 'armor' ? 'Armor' : dmgType === 'barrier' ? 'Barrier' : 'True';
             const embed = new EmbedBuilder()
                 .setColor(crit ? 0xFFD700 : 0xFF6B6B)
@@ -1416,25 +1454,23 @@ client.on('messageCreate', async message => {
                 .setDescription(crit ? '⭐ **CRITICAL!**' : '✅ **HIT!**')
                 .setFooter({ text: 'Click Take Damage to apply — use $defend first to add defenses' });
 
-            if (targetLine) embed.addFields({ name: '🎯 For', value: targetLine, inline: false });
-            
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
                     .setCustomId(`ga_take_${dmg}_${dmgType}_${message.id}`)
                     .setLabel('💔 Take Damage')
                     .setStyle(ButtonStyle.Danger)
             );
-            
-            await message.channel.send({ embeds: [embed], components: [row] });
+
+            await message.channel.send({ content: targetLine || undefined, embeds: [embed], components: [row] });
             await del();
             return;
         }
-        
+
         // $clash
         if (cmd === 'clash' || cmd === 'c') {
             const sub = args[0]?.toLowerCase();
             const encounter = getEncounter(channelId);
-            
+
             if (sub === 'start') {
                 encounter.active = true;
                 encounter.combatants = [];
@@ -1446,7 +1482,7 @@ client.on('messageCreate', async message => {
                 await del();
                 return;
             }
-            
+
             if (sub === 'end') {
                 // Wipe stat buffs/debuffs for everyone in the clash (scene-scoped)
                 for (const userId of encounter.combatants) {
@@ -1463,34 +1499,34 @@ client.on('messageCreate', async message => {
                 await del();
                 return;
             }
-            
+
             if (sub === 'join') {
                 if (!encounter.active) { await message.channel.send('❌ No clash. Use `$clash start`'); await del(); return; }
-                
+
                 const userId = message.author.id;
-                
+
                 if (encounter.combatants.includes(userId)) {
                     await message.channel.send('❌ You\'re already in the clash!');
                     await del();
                     return;
                 }
-                
+
                 await ensurePlayer(userId, message.member.displayName);
-                
+
                 encounter.combatants.push(userId);
                 const d = playerData.get(userId);
-                
+
                 await message.channel.send(`✅ **${d.characterName}** joined the clash!`);
                 await del();
                 return;
             }
-            
+
             if (sub === 'add') {
                 if (!encounter.active) { await message.channel.send('❌ No clash. Use `$clash start`'); await del(); return; }
-                
+
                 const mentioned = message.mentions.users;
                 if (mentioned.size === 0) { await message.channel.send('❌ Mention players: `$clash add @player`'); await del(); return; }
-                
+
                 let added = 0;
                 for (const [userId] of mentioned) {
                     if (!encounter.combatants.includes(userId)) {
@@ -1500,12 +1536,12 @@ client.on('messageCreate', async message => {
                         added++;
                     }
                 }
-                
+
                 await message.channel.send(`✅ Added ${added} to clash!`);
                 await del();
                 return;
             }
-            
+
             if (sub === 'leave') {
                 if (!encounter.active) { await message.channel.send('❌ No clash.'); await del(); return; }
                 const userId = message.author.id;
@@ -1568,7 +1604,7 @@ client.on('messageCreate', async message => {
             if (sub === 'list') {
                 if (!encounter.active) { await message.channel.send('❌ No clash.'); await del(); return; }
                 if (encounter.combatants.length === 0) { await message.channel.send('⚔️ No combatants.'); await del(); return; }
-                
+
                 const lines = [];
                 let num = 1;
                 for (const userId of encounter.combatants) {
@@ -1595,7 +1631,7 @@ client.on('messageCreate', async message => {
                         lines.push('');
                     });
                 }
-                
+
                 const embed = new EmbedBuilder()
                     .setColor(0xFFAA00)
                     .setTitle('⚔️ Clash')
@@ -1604,13 +1640,103 @@ client.on('messageCreate', async message => {
                         lines.join('\n')
                     )
                     .setTimestamp();
-                
+
                 await message.channel.send({ embeds: [embed] });
                 await del();
                 return;
             }
-            
+
             await message.channel.send('Usage: `$clash <start|join|add|leave|remove|list|end>`');
+            await del();
+            return;
+        }
+
+        // $clock — create, adjust, list, remove. Channel-scoped, multiple at once.
+        // Pie-slice rendering skipped (no canvas/image deps in this stack) — filled/empty
+        // circle bar (⬤◯) gives the same at-a-glance wedge count with zero dependencies.
+        if (cmd === 'clock') {
+            const clocks = getClocks(channelId);
+            const sub = args[0]?.toLowerCase();
+
+            if (!sub || sub === 'list') {
+                if (clocks.size === 0) {
+                    await message.channel.send('🕐 No clocks in this channel. `$clock <name> <total> [description]` to create one.');
+                    await del();
+                    return;
+                }
+                const lines = [...clocks.entries()].map(([name, c]) =>
+                    `**${name}** ${clockBar(c.filled, c.total)} (${c.filled}/${c.total})${c.description ? `\n*${c.description}*` : ''}`
+                );
+                const embed = new EmbedBuilder()
+                    .setColor(0x00BFFF)
+                    .setTitle('🕐 Clocks')
+                    .setDescription(lines.join('\n\n'));
+                await message.channel.send({ embeds: [embed] });
+                await del();
+                return;
+            }
+
+            if (sub === 'remove' || sub === 'delete') {
+                const name = args[1];
+                if (!name || !clocks.has(name)) {
+                    await message.channel.send('Usage: `$clock remove <name>`');
+                    await del();
+                    return;
+                }
+                clocks.delete(name);
+                await message.channel.send(`🗑️ Clock **${name}** removed.`);
+                await del();
+                return;
+            }
+
+            const name = args[0];
+            const second = args[1];
+
+            // Adjust: $clock <name> +1 / -2 / +
+            if (name && second && /^[+-]\d*$/.test(second)) {
+                if (!clocks.has(name)) {
+                    await message.channel.send(`❌ No clock named **${name}**. Create one with \`$clock <name> <total> [description]\`.`);
+                    await del();
+                    return;
+                }
+                const c = clocks.get(name);
+                const delta = second === '+' ? 1 : second === '-' ? -1 : parseInt(second);
+                const old = c.filled;
+                c.filled = Math.max(0, Math.min(c.total, c.filled + delta));
+
+                const embed = new EmbedBuilder()
+                    .setColor(c.filled >= c.total ? 0xFFD700 : 0x00BFFF)
+                    .setTitle(`🕐 ${name}`)
+                    .setDescription(
+                        `${clockBar(c.filled, c.total)}\n**${old} → ${c.filled}** / ${c.total}` +
+                        (c.filled >= c.total ? '\n🎉 **Clock complete!**' : '') +
+                        (c.description ? `\n*${c.description}*` : '')
+                    );
+                await message.channel.send({ embeds: [embed] });
+                await del();
+                return;
+            }
+
+            // Create: $clock <name> <total> [description]
+            const total = parseInt(second);
+            if (!name || !second || isNaN(total) || total < 1) {
+                await message.channel.send('Usage: `$clock <name> <total segments> [description]` to create\n`$clock <name> +1` / `-1` to adjust\n`$clock list` · `$clock remove <name>`\n(names can\'t contain spaces — use underscores)');
+                await del();
+                return;
+            }
+            if (clocks.has(name)) {
+                await message.channel.send(`❌ Clock **${name}** already exists. Remove it first or pick a different name.`);
+                await del();
+                return;
+            }
+            const description = args.slice(2).join(' ') || null;
+            clocks.set(name, { total, filled: 0, description });
+
+            const embed = new EmbedBuilder()
+                .setColor(0x00BFFF)
+                .setTitle(`🕐 ${name} created`)
+                .setDescription(`${clockBar(0, total)} (0/${total})${description ? `\n*${description}*` : ''}`);
+            await message.channel.send({ embeds: [embed] });
             await del();
             return;
         }
@@ -1649,25 +1775,25 @@ client.on('messageCreate', async message => {
             return;
         }
 
-        // $cast [school|name] — show cast schools, a school's list, or one cast
+        // $cast [source|name] — show cast sources, a source's list, or one cast
         if (cmd === 'cast' || cmd === 'casts') {
-            const schoolKeys = Object.keys(castData);
-            if (schoolKeys.length === 0) {
+            const sourceKeys = Object.keys(castData);
+            if (sourceKeys.length === 0) {
                 await message.channel.send('❌ Cast data not loaded.');
                 await del();
                 return;
             }
 
-            // Bare $cast — list schools
+            // Bare $cast — list sources
             if (!args[0]) {
-                const lines = schoolKeys.map(k => {
+                const lines = sourceKeys.map(k => {
                     const s = castData[k];
                     return `**${s.name}** (${s.source}, ${s.attribute}) — ${s.casts.length} casts`;
                 });
                 const embed = new EmbedBuilder()
                     .setColor(0x00BFFF)
-                    .setTitle('🪄 Cast Schools')
-                    .setDescription(`${lines.join('\n')}\n\nUse \`$cast <school>\` for the list or \`$cast <name>\` for one cast.\nExample: \`$cast white\` · \`$cast cure\``);
+                    .setTitle('🪄 Cast Sources')
+                    .setDescription(`${lines.join('\n')}\n\nUse \`$cast <source>\` for the list or \`$cast <name>\` for one cast.\nExample: \`$cast white\` · \`$cast cure\``);
                 await message.channel.send({ embeds: [embed] });
                 await del();
                 return;
@@ -1675,14 +1801,14 @@ client.on('messageCreate', async message => {
 
             const query = args.join(' ').toLowerCase();
 
-            // School match first: key or school name
-            let school = schoolKeys.find(k => k === query)
-                || schoolKeys.find(k => castData[k].name.toLowerCase() === query)
-                || schoolKeys.find(k => k.startsWith(query))
-                || schoolKeys.find(k => castData[k].name.toLowerCase().startsWith(query));
+            // Source match first: key or display name
+            let source = sourceKeys.find(k => k === query)
+                || sourceKeys.find(k => castData[k].name.toLowerCase() === query)
+                || sourceKeys.find(k => k.startsWith(query))
+                || sourceKeys.find(k => castData[k].name.toLowerCase().startsWith(query));
 
-            if (school) {
-                const s = castData[school];
+            if (source) {
+                const s = castData[source];
                 const embed = new EmbedBuilder()
                     .setColor(0x9B59B6)
                     .setTitle(`🪄 ${s.name}`)
@@ -1693,17 +1819,17 @@ client.on('messageCreate', async message => {
                 return;
             }
 
-            // Single cast search across all schools: exact -> startsWith -> includes
+            // Single cast search across all sources: exact -> startsWith -> includes
             const all = [];
-            for (const k of schoolKeys) {
-                for (const c of castData[k].casts) all.push({ school: castData[k], cast: c });
+            for (const k of sourceKeys) {
+                for (const c of castData[k].casts) all.push({ source: castData[k], cast: c });
             }
             let matches = all.filter(e => e.cast.name.toLowerCase() === query);
             if (matches.length === 0) matches = all.filter(e => e.cast.name.toLowerCase().startsWith(query));
             if (matches.length === 0) matches = all.filter(e => e.cast.name.toLowerCase().includes(query));
 
             if (matches.length === 0) {
-                await message.channel.send(`❌ No school or cast matching **${args.join(' ')}**. Try \`$cast\` to see the schools.`);
+                await message.channel.send(`❌ No source or cast matching **${args.join(' ')}**. Try \`$cast\` to see the sources.`);
                 await del();
                 return;
             }
@@ -1713,7 +1839,7 @@ client.on('messageCreate', async message => {
                 return;
             }
 
-            const { school: s, cast: c } = matches[0];
+            const { source: s, cast: c } = matches[0];
             const field = castField(c);
             const embed = new EmbedBuilder()
                 .setColor(0x9B59B6)
@@ -1781,7 +1907,7 @@ client.on('messageCreate', async message => {
             return;
         }
 
-        // $help
+        // $help — DMed to the player, falls back to channel if DMs are closed
         if (cmd === 'help') {
             const embed = new EmbedBuilder()
                 .setColor(0x00BFFF)
@@ -1789,18 +1915,18 @@ client.on('messageCreate', async message => {
                 .addFields(
                     {
                         name: '📚 Class Reference',
-                        value: '`$class` — list all classes · `$class <name>` — show its 5 abilities\n`$cast` — list cast schools · `$cast <school>` — full list · `$cast <name>` — one cast\nPartial names work: `$class bers` · `$cast frost`',
+                        value: '`$class` — list all classes · `$class <name>` — show its 5 abilities\n`$cast` — list cast sources · `$cast <source>` — full list · `$cast <name>` — one cast\nPartial names work: `$class bers` · `$cast frost`',
                         inline: false
                     },
-                    { 
-                        name: '🎮 Setup', 
-                        value: '`$set <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set Gandalf 100 50 100 20 15`\n`$set <sheet_url>` — import from Google Sheets (stores FMGSH stats)\n\n`$view` or `$view @player` — stats, crisis status, base stats\n`$image <url>` — set your character image (thumbnail on `$view`, `$a`, `$r`) · `$image` alone clears it', 
-                        inline: false 
+                    {
+                        name: '🎮 Setup',
+                        value: '`$set <name> <hp> <mp> <ip> <armor> <barrier>`\nExample: `$set Gandalf 100 50 100 20 15`\n`$set <sheet_url>` — import from Google Sheets (stores FMGSH stats)\n\n`$view` or `$view @player` — stats, crisis status, base stats\n`$image <url>` — set your character image (thumbnail on `$view`, `$a`, `$r`) · `$image` alone clears it',
+                        inline: false
                     },
-                    { 
-                        name: '🎲 Dice Roller', 
-                        value: '`$r <d1|stat> <d2|stat> [mod]` — sum of both dice + mod\nUse stat letters `f m g s h` to roll your attribute dice.\nFumbles and criticals apply.\nExample: `$r 6 6 2` = 2d6+2 · `$r f g 3`', 
-                        inline: false 
+                    {
+                        name: '🎲 Dice Roller',
+                        value: '`$r <d1|stat> <d2|stat> [mod]` — sum of both dice + mod\nUse stat letters `f m g s h` to roll your attribute dice.\nFumbles and criticals apply.\nExample: `$r 6 6 2` = 2d6+2 · `$r f g 3`',
+                        inline: false
                     },
                     {
                         name: '📊 Attribute Buffs',
@@ -1812,30 +1938,30 @@ client.on('messageCreate', async message => {
                         value: '`$pet join <hp> <mp> [name]` — add your pet to the clash (listed at the bottom as a/b/c)\n`$pet hp <±|full|zero>` · `$pet mp <±|full|zero>` — adjust\n`$pet` — view · `$pet leave` — remove\nExample: `$pet join 30 10 Fluffy` · `$pet hp -10`',
                         inline: false
                     },
-                    { 
-                        name: '⚔️ Attack (Player)', 
-                        value: '`$a <d1|stat> <d2|stat> [mod] [gate]` — mod defaults 0, gate defaults 1\nUse stat letters `f m g s h` to roll your attribute dice (buffs included).\nMiss only if **both** dice roll at or below gate.\nExample: `$a 10 8` · `$a f g 5 2`', 
-                        inline: false 
+                    {
+                        name: '⚔️ Attack (Player)',
+                        value: '`$a <d1|stat> <d2|stat> [mod] [gate] [a|b|t]` — mod defaults 0, gate defaults 1\nUse stat letters `f m g s h` to roll your attribute dice (buffs included).\nAdd `a`/`b`/`t` at the end to tag damage type — optional, purely informational.\nMiss only if **both** dice roll at or below gate.\nExample: `$a 10 8` · `$a f g 5 2 b`',
+                        inline: false
                     },
-                    { 
-                        name: '🎲 GM Attack', 
-                        value: '`$ga <d1> <d2> <mod> <gate> [a|b|t] [@players / slot#...]`\nExample: `$ga 10 8 15 1 b @Aoi 3`\nMiss only if **both** dice roll at or below gate.\n**Types:** `a`=armor (default), `b`=barrier, `t`=true\nTargets show as a 🎯 ping on the message but anyone can still click **Take Damage**.', 
-                        inline: false 
+                    {
+                        name: '🎲 GM Attack',
+                        value: '`$ga <d1> <d2> <mod> <gate> [a|b|t] [@players / slot#...]`\nExample: `$ga 10 8 15 1 b @Aoi 3`\nMiss only if **both** dice roll at or below gate.\n**Types:** `a`=armor (default), `b`=barrier, `t`=true\nTargets ping outside the embed (shows the orange highlight) but anyone can still click **Take Damage**.',
+                        inline: false
                     },
                     {
                         name: '💔 Apply Damage (Cascade)',
-                        value: '`$dmg <amount> [a|b|t] [slot#/letter...]`\nApplies damage through Armor/Barrier first, overflow hits HP.\nNo slots = targets yourself. Numbers target players, letters target pets (HP directly).\n⚠️ When targeting pets, always include the type flag first: `$dmg 20 a a` hits pet **a** with armor damage.\nExample: `$dmg 20 a 1 3` · `$dmg 15 b` (self) · `$dmg 10 t a b` (pets a & b)',
+                        value: '`$dmg <amount> [a|b|t] [slot#/@mention/pet letter...]`\nApplies damage through Armor/Barrier first, overflow hits HP.\nNo targets = self. Numbers and @mentions target players (mixable), letters target pets (HP directly).\n⚠️ When targeting pets, always include the type flag first: `$dmg 20 a a` hits pet **a** with armor damage.\nExample: `$dmg 20 a 1 3` · `$dmg 20 a @Aoi @boyfie` · `$dmg 15 b` (self) · `$dmg 10 t a b` (pets a & b)',
                         inline: false
                     },
                     {
                         name: '🎯 Random Target',
-                        value: '`$random [count]` — pick random combatants from the clash\nExample: `$random 3` picks 3 distinct targets with slot numbers',
+                        value: '`$random [count]` — pick random combatants from the clash, including pets\nExample: `$random 3` picks 3 distinct targets with slot numbers / pet letters',
                         inline: false
                     },
-                    { 
-                        name: '💉 Resources', 
-                        value: '`$hp`, `$mp`, `$ip`, `$armor`, `$barrier` — use `±amount`, `full`, or `zero`\nExample: `$hp -20` · `$mp +50` · `$armor full`\n\n`$defend` or `$d` — add max armor+barrier\n`$turn [@player]` — clear armor+barrier to 0\n`$rest` — HP/MP to max, armor/barrier to 0, buffs reset', 
-                        inline: false 
+                    {
+                        name: '💉 Resources',
+                        value: '`$hp`, `$mp`, `$ip`, `$armor`, `$barrier` — use `±amount`, `full`, or `zero`\nExample: `$hp -20` · `$mp +50` · `$armor full`\n\n`$defend` / `$d` / `$def` — add max armor+barrier\n`$turn` — clear armor+barrier for the whole party in this clash\n`$rest` — HP/MP to max, armor/barrier to 0, buffs reset',
+                        inline: false
                     },
                     {
                         name: '↩️ Undo',
@@ -1847,10 +1973,15 @@ client.on('messageCreate', async message => {
                         value: `\`$overdrive [±amount|zero]\` — adjust or view the shared Overdrive pool (max ${MAX_OVERDRIVE})\nAlias: \`$od\`\nExample: \`$od +1\` · \`$od -2\` · \`$od zero\`\nRequires an active clash.`,
                         inline: false
                     },
-                    { 
-                        name: '⚔️ Clash', 
-                        value: '`$clash start` — start encounter (resets Overdrive, isolated to this channel)\n`$clash join` — add yourself · `$clash leave` — leave (pet too)\n`$clash add @players` — add others · `$clash remove @player/slot#` — remove others (pet too)\n`$clash list` — numbered combatants + Overdrive + crisis tags\n`$clash end` — end encounter\n\n`$round` — new round (clears armor/barrier, resets turns, **+1 Overdrive**)\n\nEach channel has its own independent clash. Use slot numbers from `$clash list` with `$dmg`.', 
-                        inline: false 
+                    {
+                        name: '⚔️ Clash',
+                        value: '`$clash start` — start encounter (resets Overdrive, isolated to this channel)\n`$clash join` — add yourself · `$clash leave` — leave (pet too)\n`$clash add @players` — add others · `$clash remove @player/slot#` — remove others (pet too)\n`$clash list` — numbered combatants + Overdrive + crisis tags\n`$clash end` — end encounter\n\n`$round` — new round marker (turns reset, **+1 Overdrive**) — does not touch Armor/Barrier anymore\n\nEach channel has its own independent clash. Use slot numbers from `$clash list` with `$dmg`.',
+                        inline: false
+                    },
+                    {
+                        name: '🕐 Clocks',
+                        value: '`$clock <name> <total> [description]` — create a clock\n`$clock <name> +1` / `-1` — fill or drain a segment\n`$clock list` — show all clocks in this channel\n`$clock remove <name>` — delete one\nMultiple clocks can run at once. Names can\'t have spaces — use underscores.\nExample: `$clock siege_gate 6 The gate breaks open` · `$clock siege_gate +1`',
+                        inline: false
                     },
                     {
                         name: '🩸 Crisis',
@@ -1859,12 +1990,18 @@ client.on('messageCreate', async message => {
                     }
                 )
                 .setFooter({ text: 'Eien Saga Combat Tracker' });
-            
-            await message.channel.send({ embeds: [embed] });
+
+            try {
+                await message.author.send({ embeds: [embed] });
+                await message.channel.send(`📬 Sent you the command guide, <@${message.author.id}>!`);
+            } catch (err) {
+                await message.channel.send('❌ Couldn\'t DM you — check your privacy settings allow DMs from server members. Sending here instead:');
+                await message.channel.send({ embeds: [embed] });
+            }
             await del();
             return;
         }
-        
+
     } catch (err) {
         console.error('Error:', err);
         await message.channel.send('❌ Error occurred.');
@@ -1878,10 +2015,10 @@ client.on('messageCreate', async message => {
 // ========================================
 client.on('interactionCreate', async interaction => {
     if (!interaction.isButton()) return;
-    
+
     const parts = interaction.customId.split('_');
     if (parts[0] !== 'ga') return;
-    
+
     try {
         const dmg = parseInt(parts[2]);
         const dmgType = parts[3];
@@ -1909,7 +2046,7 @@ client.on('interactionCreate', async interaction => {
             .setDescription(cascadeLines.join('\n'));
 
         if (d.HP === 0) embed.setFooter({ text: '💀 HP reached 0!' });
-        
+
         await interaction.reply({ embeds: [embed] });
     } catch (err) {
         console.error('Button error:', err);
