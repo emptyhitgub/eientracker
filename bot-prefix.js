@@ -48,6 +48,57 @@ async function initDatabase() {
 const playerData = new Map();
 const playerHistory = new Map(); // userId -> array of snapshots (max 5)
 
+// Memory management — these Maps never shrank on their own before, so long-running
+// campaigns would slowly grow unbounded. lastAccess tracks activity so the sweep
+// below can evict cold entries. Only evicts data we can safely reload (DB-backed).
+const lastAccess = new Map(); // userId -> timestamp of last touch
+function touch(userId) { lastAccess.set(userId, Date.now()); }
+
+const SWEEP_INTERVAL_MS = 60 * 60 * 1000;      // run every hour
+const IDLE_EVICTION_MS = 6 * 60 * 60 * 1000;   // evict players idle 6+ hours
+
+function sweepMemory() {
+    const now = Date.now();
+    let playersEvicted = 0;
+
+    // Only evict player entries when we can reload them from Postgres —
+    // in-memory-only mode has no backing store, so evicting there means losing the character.
+    if (useDatabase) {
+        for (const userId of [...playerData.keys()]) {
+            const last = lastAccess.get(userId) || 0;
+            if (now - last > IDLE_EVICTION_MS) {
+                playerData.delete(userId);
+                playerHistory.delete(userId);
+                lastAccess.delete(userId);
+                playersEvicted++;
+            }
+        }
+    }
+
+    // Drop channel encounters that are inactive and empty — active clashes are
+    // left alone regardless of idle time so a slow-paced live session never loses state.
+    let encountersEvicted = 0;
+    for (const [channelId, encounter] of activeEncounters) {
+        if (!encounter.active && encounter.combatants.length === 0 && (encounter.pets || []).length === 0) {
+            activeEncounters.delete(channelId);
+            encountersEvicted++;
+        }
+    }
+
+    // Drop empty clock boards (all clocks removed manually already, this just clears the shell)
+    let clockBoardsEvicted = 0;
+    for (const [channelId, clocks] of channelClocks) {
+        if (clocks.size === 0) {
+            channelClocks.delete(channelId);
+            clockBoardsEvicted++;
+        }
+    }
+
+    if (playersEvicted || encountersEvicted || clockBoardsEvicted) {
+        console.log(`🧹 Memory sweep: evicted ${playersEvicted} idle players, ${encountersEvicted} empty encounters, ${clockBoardsEvicted} empty clock boards`);
+    }
+}
+
 // FIX 1: channel-scoped encounters — keyed by channelId
 const activeEncounters = new Map(); // channelId -> { active, combatants, turnsTaken, overdrive }
 
@@ -257,6 +308,7 @@ function dieLabel(token, d) {
 
 // Memory first, then DB, then fresh defaults — replaces bare initPlayer in commands
 async function ensurePlayer(userId, username) {
+    touch(userId);
     if (playerData.has(userId)) return playerData.get(userId);
     const dbData = await loadPlayerFromDB(userId);
     if (dbData) {
@@ -269,6 +321,7 @@ async function ensurePlayer(userId, username) {
 
 // Memory then DB, but never creates defaults — for commands that should error if no character exists
 async function tryLoadPlayer(userId) {
+    touch(userId);
     if (playerData.has(userId)) return true;
     const dbData = await loadPlayerFromDB(userId);
     if (dbData) { playerData.set(userId, dbData); return true; }
@@ -444,6 +497,8 @@ client.on('ready', async () => {
     console.log(`✅ ${client.user.tag}`);
     console.log(`✅ Prefix: ${PREFIX}`);
     await initDatabase();
+    setInterval(sweepMemory, SWEEP_INTERVAL_MS);
+    console.log(`✅ Memory sweep scheduled every ${SWEEP_INTERVAL_MS / 60000} min (idle eviction after ${IDLE_EVICTION_MS / 3600000}h)`);
 });
 
 client.on('messageCreate', async message => {
@@ -483,6 +538,7 @@ client.on('messageCreate', async message => {
                     maxArmor: result.maxArmor, maxBarrier: result.maxBarrier,
                     stats: result.stats
                 });
+                touch(user.id);
 
                 await saveCharacterSheet(user.id, playerData.get(user.id));
 
@@ -524,6 +580,7 @@ client.on('messageCreate', async message => {
                 HP: hp, MP: mp, IP: ip, Armor: 0, Barrier: 0,
                 maxHP: hp, maxMP: mp, maxIP: ip, maxArmor: armor, maxBarrier: barrier
             });
+            touch(user.id);
 
             await saveCharacterSheet(user.id, playerData.get(user.id));
 
@@ -1489,12 +1546,10 @@ client.on('messageCreate', async message => {
                     const d = playerData.get(userId);
                     if (d && d.statMods) d.statMods = {};
                 }
-                encounter.active = false;
-                encounter.combatants = [];
-                encounter.turnsTaken = new Set();
-                encounter.overdrive = 0;
-                encounter.pets = [];
-                encounter.crisisTriggered = new Set();
+                // Drop the channel's encounter entry entirely rather than just resetting
+                // fields — getEncounter() recreates it fresh on next use, so this stops
+                // ended clashes from sitting in memory forever across a long campaign.
+                activeEncounters.delete(channelId);
                 await message.channel.send('✅ Clash ended! All stat buffs/debuffs reset to base.');
                 await del();
                 return;
